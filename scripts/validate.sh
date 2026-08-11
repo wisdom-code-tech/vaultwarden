@@ -9,7 +9,7 @@ required_files=(
   ICON.PNG ICON_256.PNG LICENSE
   app/ui/config app/ui/images/icon_64.png app/ui/images/icon_256.png
   app/server/vaultwarden app/server/runtime/etc/ssl/certs/ca-certificates.crt
-  app/server/check-update app/ui/update.cgi
+  app/server/check-update app/server/gateway-proxy app/ui/update.cgi
   app/server/PACKAGE_VERSION
   cmd/main cmd/install_init cmd/install_callback
   cmd/uninstall_init cmd/uninstall_callback
@@ -46,6 +46,7 @@ for script_file in "${PACKAGE_DIR}/app/server/check-update" "${PACKAGE_DIR}/app/
 done
 
 file "${PACKAGE_DIR}/app/server/vaultwarden" | grep -q 'ELF 64-bit.*x86-64.*static-pie linked'
+file "${PACKAGE_DIR}/app/server/gateway-proxy" | grep -q 'ELF 64-bit.*x86-64.*statically linked'
 grep -q '^platform *= *x86' "${PACKAGE_DIR}/manifest"
 if find "${PACKAGE_DIR}" -iname '*docker*' -print -quit | grep -q .; then
   echo "原生包中不允许出现 Docker 相关文件。" >&2

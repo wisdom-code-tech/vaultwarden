@@ -3,6 +3,7 @@ dist/
 .tools/
 packaging/vaultwarden/app/server/runtime/
 packaging/vaultwarden/app/server/vaultwarden
+packaging/vaultwarden/app/server/gateway-proxy
 packaging/vaultwarden/app/server/web-vault/
 packaging/vaultwarden/*.fpk
 *.fpk

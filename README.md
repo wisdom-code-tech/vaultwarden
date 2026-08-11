@@ -6,13 +6,22 @@
 
 - Vaultwarden 固定为 `1.37.1`，从官方 `vaultwarden/server:1.37.1-alpine` 的 `linux/amd64` 镜像提取。
 - 使用官方静态 PIE x86_64 产物和 Web Vault，不依赖 fnOS 的 glibc 版本。
+- 使用静态 Go 代理监听 `${TRIM_APPDEST}/vaultwarden.sock`，通过 fnOS 统一网关转发到仅监听 `127.0.0.1:8222` 的 Vaultwarden。
 - 密码库数据、附件、密钥和 SQLite 数据库保存在 `$TRIM_PKGVAR/data`。
 - 应用配置保存在 `$TRIM_PKGETC/vaultwarden.env`，不会因升级而覆盖。
 - 默认关闭新用户注册；管理入口为 `/admin`。
 
+统一网关访问前缀固定为 `/app/vaultwarden`。安装、配置或从旧版升级时，需要填写完整地址，例如：
+
+```text
+https://nas.example.com/app/vaultwarden
+```
+
+代理会原样保留此前缀和 WebSocket Upgrade 请求；Vaultwarden 的 `DOMAIN` 必须与该地址一致。
+
 ## 构建
 
-依赖：`bash`、`curl`、`jq`、`tar`、`file`、`fnpack >= 1.2.1`。
+依赖：`bash`、`curl`、`jq`、`tar`、`file`、`Go >= 1.22`、`fnpack >= 1.2.1`。
 
 ```bash
 make build

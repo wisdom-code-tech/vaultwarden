@@ -2,5 +2,20 @@
 
 mkdir -p "${TRIM_PKGVAR}/data" "${TRIM_PKGVAR}/tmp"
 chmod 0700 "${TRIM_PKGVAR}/data"
-exit 0
 
+if [ -n "${wizard_domain:-}" ]; then
+  ENV_FILE="${TRIM_PKGETC}/vaultwarden.env"
+  mkdir -p "${TRIM_PKGETC}"
+  temp_file="${ENV_FILE}.tmp.$$"
+  if [ -f "${ENV_FILE}" ]; then
+    sed '/^DOMAIN=/d' "${ENV_FILE}" > "${temp_file}"
+  else
+    : > "${temp_file}"
+  fi
+  domain="${wizard_domain%/}"
+  escaped="$(printf '%s' "${domain}" | sed "s/'/'\\\\''/g")"
+  printf "DOMAIN='%s'\n" "${escaped}" >> "${temp_file}"
+  chmod 0600 "${temp_file}"
+  mv "${temp_file}" "${ENV_FILE}"
+fi
+exit 0
