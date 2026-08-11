@@ -3,11 +3,11 @@
 mkdir -p "${TRIM_PKGVAR}/data" "${TRIM_PKGVAR}/tmp" "${TRIM_PKGETC}"
 chmod 0700 "${TRIM_PKGVAR}/data"
 
-# 清理旧版本写入的 DOMAIN；rc8 起使用 Vaultwarden 无显式域名模式。
+# 清理旧版本写入的域名、更新检查和管理后台配置。
 ENV_FILE="${TRIM_PKGETC}/vaultwarden.env"
 if [ -f "${ENV_FILE}" ]; then
   temp_file="${ENV_FILE}.tmp.$$"
-  sed '/^DOMAIN=/d; /^AUTO_CHECK_UPDATES=/d' "${ENV_FILE}" > "${temp_file}"
+  sed '/^DOMAIN=/d; /^AUTO_CHECK_UPDATES=/d; /^ADMIN_TOKEN=/d; /^DISABLE_ADMIN_TOKEN=/d' "${ENV_FILE}" > "${temp_file}"
   chmod 0600 "${temp_file}"
   mv "${temp_file}" "${ENV_FILE}"
 fi

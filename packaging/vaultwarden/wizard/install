@@ -3,15 +3,6 @@
     "stepTitle": "Vaultwarden 服务配置",
     "items": [
       {
-        "type": "password",
-        "field": "wizard_admin_token",
-        "label": "管理后台令牌",
-        "rules": [
-          {"required": true, "message": "请输入管理后台令牌"},
-          {"min": 12, "message": "令牌至少 12 个字符"}
-        ]
-      },
-      {
         "type": "radio",
         "field": "wizard_signups_allowed",
         "label": "允许新用户注册",
@@ -28,7 +19,7 @@
     "items": [
       {
         "type": "tips",
-        "helpText": "应用通过 fnOS 统一网关访问，不再暴露服务端口。访问地址由系统自动生成，Vaultwarden 会在首次访问时自动识别。"
+        "helpText": "Vaultwarden 管理后台已禁用。服务仅监听本机端口，可通过 fnOS 统一网关或 HTTPS 隧道访问。"
       }
     ]
   }

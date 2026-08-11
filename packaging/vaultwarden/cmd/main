@@ -59,8 +59,8 @@ load_environment() {
     . "${ENV_FILE}"
     set +a
   fi
-  # 无域名模式由请求头推断当前地址，旧 DOMAIN 不得覆盖。
-  unset DOMAIN
+  # 无域名模式和禁用管理后台均不得被旧环境覆盖。
+  unset DOMAIN ADMIN_TOKEN DISABLE_ADMIN_TOKEN
   export DATA_FOLDER="${TRIM_PKGVAR}/data"
   export WEB_VAULT_FOLDER="${TRIM_APPDEST}/server/web-vault"
   export ROCKET_ADDRESS="127.0.0.1"

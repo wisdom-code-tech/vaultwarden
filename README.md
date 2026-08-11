@@ -9,7 +9,7 @@
 - 使用静态 Go 代理监听 `${TRIM_APPDEST}/vaultwarden.sock`，通过 fnOS 统一网关转发到仅监听 `127.0.0.1:8222` 的 Vaultwarden。
 - 密码库数据、附件、密钥和 SQLite 数据库保存在 `$TRIM_PKGVAR/data`。
 - 应用配置保存在 `$TRIM_PKGETC/vaultwarden.env`，不会因升级而覆盖。
-- 默认关闭新用户注册；管理入口为 `/admin`。
+- 默认关闭新用户注册；管理后台和 `ADMIN_TOKEN` 均不启用。
 
 Vaultwarden 不设置显式 `DOMAIN`，启动后立即在 `127.0.0.1:8222` 的根路径提供服务。端口隧道或反向代理的上游只需填写 `http://127.0.0.1:8222`。
 

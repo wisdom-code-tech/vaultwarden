@@ -156,24 +156,35 @@ func TestReverseProxyPrefixesRedirectsAndCookies(t *testing.T) {
 	}
 }
 
-func TestEnvironmentWithoutDomainRemovesOldValue(t *testing.T) {
-	environment := environmentWithoutDomain([]string{"PORT=8222", "DOMAIN=https://old.invalid"})
+func TestEnvironmentWithoutOverridesRemovesDisabledSettings(t *testing.T) {
+	environment := environmentWithoutOverrides([]string{
+		"PORT=8222",
+		"DOMAIN=https://old.invalid",
+		"ADMIN_TOKEN=plain-text-token",
+		"DISABLE_ADMIN_TOKEN=true",
+	})
 	if slices.Contains(environment, "DOMAIN=https://old.invalid") {
 		t.Fatal("old DOMAIN was retained")
+	}
+	if slices.Contains(environment, "ADMIN_TOKEN=plain-text-token") {
+		t.Fatal("ADMIN_TOKEN was retained")
+	}
+	if slices.Contains(environment, "DISABLE_ADMIN_TOKEN=true") {
+		t.Fatal("DISABLE_ADMIN_TOKEN was retained")
 	}
 	if !slices.Contains(environment, "PORT=8222") {
 		t.Fatal("unrelated environment was removed")
 	}
 }
 
-func TestRemoveConfigDomainPreservesOtherSettings(t *testing.T) {
+func TestRemoveConfigOverridesPreservesOtherSettings(t *testing.T) {
 	dataFolder := t.TempDir()
 	configPath := filepath.Join(dataFolder, "config.json")
-	initial := []byte(`{"domain":"https://old.invalid","signups_allowed":false,"smtp_host":"mail.example.test"}`)
+	initial := []byte(`{"domain":"https://old.invalid","admin_token":"plain-text-token","disable_admin_token":true,"signups_allowed":false,"smtp_host":"mail.example.test"}`)
 	if err := os.WriteFile(configPath, initial, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := removeConfigDomain(dataFolder); err != nil {
+	if err := removeConfigOverrides(dataFolder); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(configPath)
@@ -186,6 +197,12 @@ func TestRemoveConfigDomainPreservesOtherSettings(t *testing.T) {
 	}
 	if _, exists := values["domain"]; exists {
 		t.Fatalf("domain was retained: %v", values["domain"])
+	}
+	if _, exists := values["admin_token"]; exists {
+		t.Fatalf("admin_token was retained: %v", values["admin_token"])
+	}
+	if _, exists := values["disable_admin_token"]; exists {
+		t.Fatalf("disable_admin_token was retained: %v", values["disable_admin_token"])
 	}
 	if values["signups_allowed"] != false || values["smtp_host"] != "mail.example.test" {
 		t.Fatalf("unrelated settings changed: %#v", values)

@@ -10,15 +10,6 @@
       "url": "/app/vaultwarden/",
       "allUsers": true,
       "accessPerm": "readonly"
-    },
-    "vaultwarden.Admin": {
-      "title": "Vaultwarden 管理后台",
-      "icon": "images/icon_{0}.png",
-      "type": "url",
-      "protocol": "",
-      "url": "/app/vaultwarden/admin",
-      "allUsers": false,
-      "accessPerm": "readonly"
     }
   }
 }

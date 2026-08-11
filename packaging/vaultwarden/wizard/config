@@ -3,15 +3,6 @@
     "stepTitle": "Vaultwarden 设置",
     "items": [
       {
-        "type": "password",
-        "field": "wizard_admin_token",
-        "label": "管理后台令牌",
-        "rules": [
-          {"required": true, "message": "请输入管理后台令牌"},
-          {"min": 12, "message": "令牌至少 12 个字符"}
-        ]
-      },
-      {
         "type": "radio",
         "field": "wizard_signups_allowed",
         "label": "允许新用户注册",

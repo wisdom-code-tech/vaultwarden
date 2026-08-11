@@ -147,10 +147,10 @@ func (s *supervisor) start() error {
 	}
 
 	command := exec.Command(s.vaultwardenPath)
-	if err := removeConfigDomain(os.Getenv("DATA_FOLDER")); err != nil {
-		return fmt.Errorf("remove Vaultwarden domain override: %w", err)
+	if err := removeConfigOverrides(os.Getenv("DATA_FOLDER")); err != nil {
+		return fmt.Errorf("remove disabled Vaultwarden configuration: %w", err)
 	}
-	command.Env = environmentWithoutDomain(os.Environ())
+	command.Env = environmentWithoutOverrides(os.Environ())
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
 	command.SysProcAttr = vaultwardenSysProcAttr()
@@ -216,17 +216,20 @@ func (s *supervisor) stopLocked() error {
 	return nil
 }
 
-func environmentWithoutDomain(environment []string) []string {
+func environmentWithoutOverrides(environment []string) []string {
 	filtered := make([]string, 0, len(environment))
 	for _, item := range environment {
-		if !strings.HasPrefix(item, "DOMAIN=") {
-			filtered = append(filtered, item)
+		if strings.HasPrefix(item, "DOMAIN=") ||
+			strings.HasPrefix(item, "ADMIN_TOKEN=") ||
+			strings.HasPrefix(item, "DISABLE_ADMIN_TOKEN=") {
+			continue
 		}
+		filtered = append(filtered, item)
 	}
 	return filtered
 }
 
-func removeConfigDomain(dataFolder string) error {
+func removeConfigOverrides(dataFolder string) error {
 	if dataFolder == "" {
 		return nil
 	}
@@ -242,10 +245,15 @@ func removeConfigDomain(dataFolder string) error {
 	if err := json.Unmarshal(data, &configValues); err != nil {
 		return fmt.Errorf("parse %s: %w", path, err)
 	}
-	if _, exists := configValues["domain"]; !exists {
+	_, hasDomain := configValues["domain"]
+	_, hasAdminToken := configValues["admin_token"]
+	_, hasDisabledAdminToken := configValues["disable_admin_token"]
+	if !hasDomain && !hasAdminToken && !hasDisabledAdminToken {
 		return nil
 	}
 	delete(configValues, "domain")
+	delete(configValues, "admin_token")
+	delete(configValues, "disable_admin_token")
 	updated, err := json.MarshalIndent(configValues, "", "  ")
 	if err != nil {
 		return err
