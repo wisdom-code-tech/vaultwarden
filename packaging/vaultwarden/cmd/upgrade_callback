@@ -3,7 +3,7 @@
 mkdir -p "${TRIM_PKGVAR}/data" "${TRIM_PKGVAR}/tmp" "${TRIM_PKGETC}"
 chmod 0700 "${TRIM_PKGVAR}/data"
 
-# 清理旧版本已废弃的用户配置；DOMAIN 由统一网关从真实请求自动推导。
+# 清理旧版本写入的 DOMAIN；rc8 起使用 Vaultwarden 无显式域名模式。
 ENV_FILE="${TRIM_PKGETC}/vaultwarden.env"
 if [ -f "${ENV_FILE}" ]; then
   temp_file="${ENV_FILE}.tmp.$$"

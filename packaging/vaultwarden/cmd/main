@@ -4,7 +4,6 @@ APP_BINARY="${TRIM_APPDEST}/server/vaultwarden"
 GATEWAY_BINARY="${TRIM_APPDEST}/server/gateway-proxy"
 GATEWAY_SOCKET="${TRIM_APPDEST}/vaultwarden.sock"
 GATEWAY_PREFIX="/app/vaultwarden"
-GATEWAY_DOMAIN_CACHE="${TRIM_PKGVAR}/gateway-domain"
 ENV_FILE="${TRIM_PKGETC}/vaultwarden.env"
 GATEWAY_PID_FILE="${TRIM_PKGVAR}/gateway-proxy.pid"
 LOG_FILE="${TRIM_PKGVAR}/vaultwarden.log"
@@ -60,7 +59,7 @@ load_environment() {
     . "${ENV_FILE}"
     set +a
   fi
-  # DOMAIN 由统一网关代理从真实请求自动生成，旧配置不得覆盖。
+  # 无域名模式由请求头推断当前地址，旧 DOMAIN 不得覆盖。
   unset DOMAIN
   export DATA_FOLDER="${TRIM_PKGVAR}/data"
   export WEB_VAULT_FOLDER="${TRIM_APPDEST}/server/web-vault"
@@ -96,8 +95,7 @@ start_app() {
     -socket "${GATEWAY_SOCKET}" \
     -upstream "http://127.0.0.1:${ROCKET_PORT}" \
     -prefix "${GATEWAY_PREFIX}" \
-    -vaultwarden "${APP_BINARY}" \
-    -domain-cache "${GATEWAY_DOMAIN_CACHE}" >> "${LOG_FILE}" 2>&1 &
+    -vaultwarden "${APP_BINARY}" >> "${LOG_FILE}" 2>&1 &
   gateway_pid=$!
   printf '%s\n' "${gateway_pid}" > "${GATEWAY_PID_FILE}"
   sleep 1

@@ -11,9 +11,9 @@
 - 应用配置保存在 `$TRIM_PKGETC/vaultwarden.env`，不会因升级而覆盖。
 - 默认关闭新用户注册；管理入口为 `/admin`。
 
-统一网关访问前缀固定为 `/app/vaultwarden`。访问地址由 fnOS 自动生成；代理会从首个网关请求的协议和 Host 自动生成 Vaultwarden 的 `DOMAIN`，无需在安装、配置或升级向导中手工填写。检测结果保存在应用数据目录的 `gateway-domain` 文件中，访问主机发生变化时会自动刷新并重启后端。
+Vaultwarden 不设置显式 `DOMAIN`，启动后立即在 `127.0.0.1:8222` 的根路径提供服务。端口隧道或反向代理的上游只需填写 `http://127.0.0.1:8222`。
 
-代理会原样保留此前缀和 WebSocket Upgrade 请求；若 fnOS 转发时剥离前缀，代理会自动补回一次。
+统一网关访问前缀固定为 `/app/vaultwarden`。静态 Go 适配器会把 fnOS 转发到 Unix Socket 的公开前缀剥离，再转发到 Vaultwarden 根路径；WebSocket Upgrade 请求会原样透传。
 
 ## 构建
 
@@ -44,7 +44,7 @@ make build
 /var/apps/vaultwarden/var/vaultwarden.log
 ```
 
-Vaultwarden Web Vault 的 WebCrypto 要求安全上下文。生产使用时必须通过 fnOS 统一网关提供 HTTPS；不要把 Vaultwarden 后端端口直接暴露到互联网。
+Vaultwarden Web Vault 的 WebCrypto 要求安全上下文。生产使用时必须由隧道、反向代理或 fnOS 统一网关提供 HTTPS；不要把 Vaultwarden 后端端口直接暴露到互联网。
 
 ## 更新上游版本
 

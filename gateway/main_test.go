@@ -56,7 +56,7 @@ func TestServeWaitsForVaultwardenShutdown(t *testing.T) {
 	}
 }
 
-func TestReverseProxyPreservesGatewayPrefix(t *testing.T) {
+func TestReverseProxyStripsGatewayPrefix(t *testing.T) {
 	received := make(chan *http.Request, 1)
 	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		received <- request.Clone(request.Context())
@@ -87,8 +87,8 @@ func TestReverseProxyPreservesGatewayPrefix(t *testing.T) {
 	}
 
 	forwarded := <-received
-	if forwarded.URL.Path != "/app/vaultwarden/api/sync" {
-		t.Fatalf("path was rewritten: %s", forwarded.URL.Path)
+	if forwarded.URL.Path != "/api/sync" {
+		t.Fatalf("gateway prefix was not stripped: %s", forwarded.URL.Path)
 	}
 	if forwarded.URL.RawQuery != "excludeDomains=true" {
 		t.Fatalf("query was rewritten: %s", forwarded.URL.RawQuery)
@@ -104,7 +104,7 @@ func TestReverseProxyPreservesGatewayPrefix(t *testing.T) {
 	}
 }
 
-func TestReverseProxyRestoresStrippedGatewayPrefix(t *testing.T) {
+func TestReverseProxyKeepsRootPath(t *testing.T) {
 	receivedPath := make(chan string, 1)
 	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		receivedPath <- request.URL.Path
@@ -124,63 +124,56 @@ func TestReverseProxyRestoresStrippedGatewayPrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 	response.Body.Close()
-	if path := <-receivedPath; path != "/app/vaultwarden/identity/connect/token" {
-		t.Fatalf("gateway prefix was not restored: %s", path)
+	if path := <-receivedPath; path != "/identity/connect/token" {
+		t.Fatalf("root path was changed: %s", path)
 	}
 }
 
-func TestPublicDomainUsesGatewayHeaders(t *testing.T) {
-	request := httptest.NewRequest(http.MethodGet, "http://unix/app/vaultwarden/", nil)
-	request.Host = "internal.socket"
-	request.Header.Set("X-Forwarded-Proto", "https")
-	request.Header.Set("X-Forwarded-Host", "nas.example.test:5667")
-
-	domain, err := publicDomain(request, "/app/vaultwarden")
+func TestReverseProxyPrefixesRedirectsAndCookies(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		http.SetCookie(writer, &http.Cookie{Name: "session", Value: "value", Path: "/", HttpOnly: true})
+		http.Redirect(writer, request, "/admin", http.StatusTemporaryRedirect)
+	}))
+	defer upstream.Close()
+	upstreamURL, err := url.Parse(upstream.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if domain != "https://nas.example.test:5667/app/vaultwarden" {
-		t.Fatalf("unexpected public domain: %s", domain)
+	proxy := httptest.NewServer(newReverseProxy(upstreamURL, "/app/vaultwarden"))
+	defer proxy.Close()
+	client := &http.Client{CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
+	response, err := client.Get(proxy.URL + "/app/vaultwarden/admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if location := response.Header.Get("Location"); location != "/app/vaultwarden/admin" {
+		t.Fatalf("unexpected redirect location: %s", location)
+	}
+	cookies := response.Cookies()
+	if len(cookies) != 1 || cookies[0].Path != "/app/vaultwarden" {
+		t.Fatalf("unexpected cookies: %#v", cookies)
 	}
 }
 
-func TestEnvironmentWithDomainReplacesOldValue(t *testing.T) {
-	environment := environmentWithDomain([]string{"PORT=8222", "DOMAIN=https://old.invalid"}, "https://nas/app/vaultwarden")
+func TestEnvironmentWithoutDomainRemovesOldValue(t *testing.T) {
+	environment := environmentWithoutDomain([]string{"PORT=8222", "DOMAIN=https://old.invalid"})
 	if slices.Contains(environment, "DOMAIN=https://old.invalid") {
 		t.Fatal("old DOMAIN was retained")
 	}
-	if !slices.Contains(environment, "DOMAIN=https://nas/app/vaultwarden") {
-		t.Fatal("new DOMAIN was not injected")
+	if !slices.Contains(environment, "PORT=8222") {
+		t.Fatal("unrelated environment was removed")
 	}
 }
 
-func TestDomainCacheRoundTrip(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "gateway-domain")
-	domain := "https://nas.example.test/app/vaultwarden"
-	if err := writeDomainCache(path, domain); err != nil {
-		t.Fatal(err)
-	}
-	if got := readDomainCache(path, "/app/vaultwarden"); got != domain {
-		t.Fatalf("unexpected cached domain: %s", got)
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0600 {
-		t.Fatalf("unexpected cache permissions: %o", info.Mode().Perm())
-	}
-}
-
-func TestSyncConfigDomainPreservesOtherSettings(t *testing.T) {
+func TestRemoveConfigDomainPreservesOtherSettings(t *testing.T) {
 	dataFolder := t.TempDir()
 	configPath := filepath.Join(dataFolder, "config.json")
 	initial := []byte(`{"domain":"https://old.invalid","signups_allowed":false,"smtp_host":"mail.example.test"}`)
 	if err := os.WriteFile(configPath, initial, 0600); err != nil {
 		t.Fatal(err)
 	}
-	newDomain := "https://nas.example.test/app/vaultwarden"
-	if err := syncConfigDomain(dataFolder, newDomain); err != nil {
+	if err := removeConfigDomain(dataFolder); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(configPath)
@@ -191,8 +184,8 @@ func TestSyncConfigDomainPreservesOtherSettings(t *testing.T) {
 	if err := json.Unmarshal(data, &values); err != nil {
 		t.Fatal(err)
 	}
-	if values["domain"] != newDomain {
-		t.Fatalf("domain was not updated: %v", values["domain"])
+	if _, exists := values["domain"]; exists {
+		t.Fatalf("domain was retained: %v", values["domain"])
 	}
 	if values["signups_allowed"] != false || values["smtp_host"] != "mail.example.test" {
 		t.Fatalf("unrelated settings changed: %#v", values)

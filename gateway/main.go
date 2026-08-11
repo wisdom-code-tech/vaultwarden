@@ -26,7 +26,6 @@ type config struct {
 	upstream        *url.URL
 	prefix          string
 	vaultwardenPath string
-	domainCachePath string
 }
 
 func parseConfig() (config, error) {
@@ -34,12 +33,10 @@ func parseConfig() (config, error) {
 	var upstreamRaw string
 	var prefix string
 	var vaultwardenPath string
-	var domainCachePath string
 	flag.StringVar(&socketPath, "socket", "", "Unix socket path exposed to the fnOS gateway")
 	flag.StringVar(&upstreamRaw, "upstream", "http://127.0.0.1:8222", "Vaultwarden upstream URL")
 	flag.StringVar(&prefix, "prefix", "/app/vaultwarden", "gateway path prefix")
 	flag.StringVar(&vaultwardenPath, "vaultwarden", "", "Vaultwarden executable managed by this gateway")
-	flag.StringVar(&domainCachePath, "domain-cache", "", "path used to persist the detected public domain")
 	flag.Parse()
 
 	if socketPath == "" || !filepath.IsAbs(socketPath) {
@@ -47,9 +44,6 @@ func parseConfig() (config, error) {
 	}
 	if vaultwardenPath == "" || !filepath.IsAbs(vaultwardenPath) {
 		return config{}, errors.New("vaultwarden must be an absolute path")
-	}
-	if domainCachePath == "" || !filepath.IsAbs(domainCachePath) {
-		return config{}, errors.New("domain-cache must be an absolute path")
 	}
 	upstream, err := url.Parse(upstreamRaw)
 	if err != nil || upstream.Scheme != "http" || upstream.Host == "" {
@@ -63,7 +57,6 @@ func parseConfig() (config, error) {
 		upstream:        upstream,
 		prefix:          prefix,
 		vaultwardenPath: vaultwardenPath,
-		domainCachePath: domainCachePath,
 	}, nil
 }
 
@@ -72,9 +65,9 @@ func newReverseProxy(upstream *url.URL, prefix string) http.Handler {
 	director := proxy.Director
 	proxy.Director = func(request *http.Request) {
 		originalHost := request.Host
-		request.URL.Path = ensurePrefix(request.URL.Path, prefix)
+		request.URL.Path = stripPrefix(request.URL.Path, prefix)
 		if request.URL.RawPath != "" {
-			request.URL.RawPath = ensurePrefix(request.URL.RawPath, prefix)
+			request.URL.RawPath = stripPrefix(request.URL.RawPath, prefix)
 		}
 		director(request)
 		request.Host = originalHost
@@ -84,6 +77,23 @@ func newReverseProxy(upstream *url.URL, prefix string) http.Handler {
 			request.Header.Set("X-Forwarded-Proto", "https")
 		}
 	}
+	proxy.ModifyResponse = func(response *http.Response) error {
+		location := response.Header.Get("Location")
+		if strings.HasPrefix(location, "/") && !strings.HasPrefix(location, "//") {
+			response.Header.Set("Location", prefixGatewayPath(location, prefix))
+		}
+		cookies := response.Cookies()
+		if len(cookies) > 0 {
+			response.Header.Del("Set-Cookie")
+			for _, cookie := range cookies {
+				if cookie.Path == "" || cookie.Path == "/" {
+					cookie.Path = prefix
+				}
+				response.Header.Add("Set-Cookie", cookie.String())
+			}
+		}
+		return nil
+	}
 	proxy.ErrorHandler = func(writer http.ResponseWriter, request *http.Request, err error) {
 		log.Printf("proxy error for %s %s: %v", request.Method, request.URL.Path, err)
 		http.Error(writer, "Vaultwarden upstream unavailable", http.StatusBadGateway)
@@ -91,7 +101,17 @@ func newReverseProxy(upstream *url.URL, prefix string) http.Handler {
 	return proxy
 }
 
-func ensurePrefix(path, prefix string) string {
+func stripPrefix(path, prefix string) string {
+	if path == prefix {
+		return "/"
+	}
+	if strings.HasPrefix(path, prefix+"/") {
+		return strings.TrimPrefix(path, prefix)
+	}
+	return path
+}
+
+func prefixGatewayPath(path, prefix string) string {
 	if path == prefix || strings.HasPrefix(path, prefix+"/") {
 		return path
 	}
@@ -101,50 +121,15 @@ func ensurePrefix(path, prefix string) string {
 	return prefix + "/" + strings.TrimPrefix(path, "/")
 }
 
-func publicDomain(request *http.Request, prefix string) (string, error) {
-	proto := firstForwardedValue(request.Header.Get("X-Forwarded-Proto"))
-	if proto == "" {
-		proto = "https"
-	}
-	if proto != "http" && proto != "https" {
-		return "", fmt.Errorf("invalid forwarded protocol %q", proto)
-	}
-	host := firstForwardedValue(request.Header.Get("X-Forwarded-Host"))
-	if host == "" {
-		host = request.Host
-	}
-	if host == "" || strings.ContainsAny(host, "/\\\r\n\t ") {
-		return "", fmt.Errorf("invalid forwarded host %q", host)
-	}
-	domain := (&url.URL{Scheme: proto, Host: host, Path: prefix}).String()
-	return strings.TrimSuffix(domain, "/"), nil
-}
-
-func firstForwardedValue(value string) string {
-	value, _, _ = strings.Cut(value, ",")
-	return strings.TrimSpace(strings.ToLower(value))
-}
-
 type supervisor struct {
 	mu              sync.Mutex
 	vaultwardenPath string
 	upstream        *url.URL
-	prefix          string
-	domainCachePath string
 	command         *exec.Cmd
 	done            chan error
-	domain          string
 }
 
-func (s *supervisor) ensure(request *http.Request) error {
-	domain, err := publicDomain(request, s.prefix)
-	if err != nil {
-		return err
-	}
-	return s.ensureDomain(domain)
-}
-
-func (s *supervisor) ensureDomain(domain string) error {
+func (s *supervisor) start() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -153,11 +138,8 @@ func (s *supervisor) ensureDomain(domain string) error {
 		case <-s.done:
 			s.command = nil
 			s.done = nil
-			s.domain = ""
 		default:
-			if s.domain == domain {
-				return nil
-			}
+			return nil
 		}
 	}
 	if err := s.stopLocked(); err != nil {
@@ -165,10 +147,10 @@ func (s *supervisor) ensureDomain(domain string) error {
 	}
 
 	command := exec.Command(s.vaultwardenPath)
-	if err := syncConfigDomain(os.Getenv("DATA_FOLDER"), domain); err != nil {
-		return fmt.Errorf("synchronize Vaultwarden config domain: %w", err)
+	if err := removeConfigDomain(os.Getenv("DATA_FOLDER")); err != nil {
+		return fmt.Errorf("remove Vaultwarden domain override: %w", err)
 	}
-	command.Env = environmentWithDomain(os.Environ(), domain)
+	command.Env = environmentWithoutDomain(os.Environ())
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
 	command.SysProcAttr = vaultwardenSysProcAttr()
@@ -177,18 +159,30 @@ func (s *supervisor) ensureDomain(domain string) error {
 	}
 	s.command = command
 	s.done = make(chan error, 1)
-	s.domain = domain
 	go func(done chan<- error) { done <- command.Wait() }(s.done)
 
-	if err := waitForUpstream(s.upstream.Host, 20*time.Second); err != nil {
-		s.stopLocked()
-		return err
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		select {
+		case err := <-s.done:
+			s.command = nil
+			s.done = nil
+			if err == nil {
+				return fmt.Errorf("Vaultwarden exited before listening on %s", s.upstream.Host)
+			}
+			return fmt.Errorf("Vaultwarden exited before listening on %s: %w", s.upstream.Host, err)
+		default:
+		}
+		connection, err := net.DialTimeout("tcp", s.upstream.Host, 500*time.Millisecond)
+		if err == nil {
+			connection.Close()
+			log.Printf("Vaultwarden started without an explicit DOMAIN on %s", s.upstream.Host)
+			return nil
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
-	if err := writeDomainCache(s.domainCachePath, domain); err != nil {
-		log.Printf("write gateway domain cache: %v", err)
-	}
-	log.Printf("Vaultwarden started with automatic DOMAIN=%s", domain)
-	return nil
+	s.stopLocked()
+	return fmt.Errorf("Vaultwarden did not listen on %s within 20s", s.upstream.Host)
 }
 
 func (s *supervisor) stop() error {
@@ -201,7 +195,6 @@ func (s *supervisor) stopLocked() error {
 	if s.command == nil || s.command.Process == nil {
 		s.command = nil
 		s.done = nil
-		s.domain = ""
 		return nil
 	}
 	pid := s.command.Process.Pid
@@ -220,42 +213,20 @@ func (s *supervisor) stopLocked() error {
 	}
 	s.command = nil
 	s.done = nil
-	s.domain = ""
 	return nil
 }
 
-func environmentWithDomain(environment []string, domain string) []string {
-	filtered := make([]string, 0, len(environment)+1)
+func environmentWithoutDomain(environment []string) []string {
+	filtered := make([]string, 0, len(environment))
 	for _, item := range environment {
 		if !strings.HasPrefix(item, "DOMAIN=") {
 			filtered = append(filtered, item)
 		}
 	}
-	return append(filtered, "DOMAIN="+domain)
+	return filtered
 }
 
-func waitForUpstream(address string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		connection, err := net.DialTimeout("tcp", address, 500*time.Millisecond)
-		if err == nil {
-			connection.Close()
-			return nil
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
-	return fmt.Errorf("Vaultwarden did not listen on %s within %s", address, timeout)
-}
-
-func writeDomainCache(path, domain string) error {
-	tempPath := path + ".tmp"
-	if err := os.WriteFile(tempPath, []byte(domain+"\n"), 0600); err != nil {
-		return err
-	}
-	return os.Rename(tempPath, path)
-}
-
-func syncConfigDomain(dataFolder, domain string) error {
+func removeConfigDomain(dataFolder string) error {
 	if dataFolder == "" {
 		return nil
 	}
@@ -271,10 +242,10 @@ func syncConfigDomain(dataFolder, domain string) error {
 	if err := json.Unmarshal(data, &configValues); err != nil {
 		return fmt.Errorf("parse %s: %w", path, err)
 	}
-	if existing, ok := configValues["domain"].(string); ok && strings.TrimSuffix(existing, "/") == domain {
+	if _, exists := configValues["domain"]; !exists {
 		return nil
 	}
-	configValues["domain"] = domain
+	delete(configValues, "domain")
 	updated, err := json.MarshalIndent(configValues, "", "  ")
 	if err != nil {
 		return err
@@ -289,19 +260,6 @@ func syncConfigDomain(dataFolder, domain string) error {
 		return err
 	}
 	return os.Rename(tempPath, path)
-}
-
-func readDomainCache(path, prefix string) string {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
-	domain := strings.TrimSpace(string(data))
-	parsed, err := url.Parse(domain)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" || strings.TrimSuffix(parsed.Path, "/") != prefix {
-		return ""
-	}
-	return strings.TrimSuffix(domain, "/")
 }
 
 func removeStaleSocket(path string) error {
@@ -335,30 +293,18 @@ func run(ctx context.Context, cfg config) error {
 	supervisor := &supervisor{
 		vaultwardenPath: cfg.vaultwardenPath,
 		upstream:        cfg.upstream,
-		prefix:          cfg.prefix,
-		domainCachePath: cfg.domainCachePath,
 	}
-	if cachedDomain := readDomainCache(cfg.domainCachePath, cfg.prefix); cachedDomain != "" {
-		if err := supervisor.ensureDomain(cachedDomain); err != nil {
-			log.Printf("start with cached gateway domain: %v", err)
-		}
+	if err := supervisor.start(); err != nil {
+		return err
 	}
 
 	proxy := newReverseProxy(cfg.upstream, cfg.prefix)
-	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if err := supervisor.ensure(request); err != nil {
-			log.Printf("derive gateway domain: %v", err)
-			http.Error(writer, "Unable to initialize Vaultwarden", http.StatusServiceUnavailable)
-			return
-		}
-		proxy.ServeHTTP(writer, request)
-	})
 	server := &http.Server{
-		Handler:           handler,
+		Handler:           proxy,
 		ReadHeaderTimeout: 15 * time.Second,
 		IdleTimeout:       90 * time.Second,
 	}
-	log.Printf("fnOS gateway listening on unix://%s; DOMAIN will be derived automatically", cfg.socketPath)
+	log.Printf("fnOS gateway listening on unix://%s and forwarding %s to the Vaultwarden root", cfg.socketPath, cfg.prefix)
 	return serveUntilDone(ctx, server, listener, supervisor.stop)
 }
 
