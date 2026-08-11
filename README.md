@@ -11,6 +11,7 @@
 - 应用配置保存在 `$TRIM_PKGETC/vaultwarden.env`，不会因升级而覆盖。
 - 默认关闭新用户注册；管理后台和 `ADMIN_TOKEN` 均不启用。
 - 可在 fnOS“应用设置 → 运行设置”中修改本地端口、注册开关和 WebSocket 通知；保存后自动重启生效。
+- 卸载时选择“永久删除全部数据”会清空应用在当前卷的 `@appdata`、`@appconf`、`@apphome`、`@appmeta` 和 `@apptemp` 数据。
 
 Vaultwarden 不设置显式 `DOMAIN`，默认在 `127.0.0.1:8222` 的根路径提供服务。端口隧道或反向代理的上游只需填写 `http://127.0.0.1:8222`；修改本地端口后使用对应的新端口。
 

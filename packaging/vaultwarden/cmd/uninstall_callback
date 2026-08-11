@@ -1,17 +1,45 @@
 #!/bin/bash
 
+report_error() {
+  if [ -n "${TRIM_TEMP_LOGFILE:-}" ]; then
+    printf '%s\n' "$1" > "${TRIM_TEMP_LOGFILE}"
+  fi
+}
+
+resolve_volume_root() {
+  var_path="${TRIM_PKGVAR:-}"
+  [ -n "${var_path}" ] || return 1
+
+  resolved_var="$(readlink -f -- "${var_path}" 2>/dev/null || true)"
+  [ -n "${resolved_var}" ] || resolved_var="${var_path}"
+  resolved_var="${resolved_var%/}"
+
+  if ! printf '%s\n' "${resolved_var}" | grep -Eq '^/vol[0-9]+/@appdata/vaultwarden$'; then
+    return 1
+  fi
+  printf '%s\n' "${resolved_var%/@appdata/vaultwarden}"
+}
+
+empty_app_directory() {
+  target="$1"
+  [ -e "${target}" ] || return 0
+
+  # 卷内应用目录必须是真实目录，拒绝继续跟随二次软链接。
+  if [ -L "${target}" ] || [ ! -d "${target}" ]; then
+    report_error "拒绝清理非目录或软链接路径：${target}"
+    return 1
+  fi
+  find "${target}" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+}
+
 if [ "${wizard_data_action:-keep}" = "delete" ]; then
-  case "${TRIM_PKGVAR:-}" in
-    /var/apps/vaultwarden/var|/vol*/@appdata/vaultwarden)
-      find "${TRIM_PKGVAR}" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
-      ;;
-    *)
-      if [ -n "${TRIM_TEMP_LOGFILE:-}" ]; then
-        printf '%s\n' "拒绝删除未识别的数据目录。" > "${TRIM_TEMP_LOGFILE}"
-      fi
-      exit 1
-      ;;
-  esac
+  volume_root="$(resolve_volume_root)" || {
+    report_error "无法从应用数据目录安全确定安装卷，已取消数据清理。"
+    exit 1
+  }
+
+  for storage_dir in @appdata @appconf @apphome @appmeta @apptemp; do
+    empty_app_directory "${volume_root}/${storage_dir}/vaultwarden" || exit 1
+  done
 fi
 exit 0
-
