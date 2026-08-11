@@ -1,0 +1,33 @@
+{
+  ".url": {
+    "vaultwarden.Application": {
+      "title": "Vaultwarden",
+      "icon": "images/icon_{0}.png",
+      "type": "url",
+      "protocol": "http",
+      "port": "${wizard_port}",
+      "url": "/",
+      "allUsers": true,
+      "accessPerm": "readonly"
+    },
+    "vaultwarden.Admin": {
+      "title": "Vaultwarden 管理后台",
+      "icon": "images/icon_{0}.png",
+      "type": "url",
+      "protocol": "http",
+      "port": "${wizard_port}",
+      "url": "/admin",
+      "allUsers": false,
+      "accessPerm": "readonly"
+    },
+    "vaultwarden.Update": {
+      "title": "Vaultwarden 更新状态",
+      "icon": "images/icon_{0}.png",
+      "type": "iframe",
+      "protocol": "http",
+      "url": "/cgi/ThirdParty/vaultwarden/update.cgi/",
+      "allUsers": false,
+      "accessPerm": "readonly"
+    }
+  }
+}

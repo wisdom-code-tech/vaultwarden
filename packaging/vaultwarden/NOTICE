@@ -1,0 +1,8 @@
+Vaultwarden for fnOS packages unmodified runtime artifacts from:
+https://github.com/dani-garcia/vaultwarden
+
+Vaultwarden is distributed under GNU Affero General Public License v3.0.
+The bundled Web Vault contains software and assets from Bitwarden and its
+dependencies. Vaultwarden is not associated with Bitwarden, Inc.
+
+Exact upstream image identity is recorded in app/server/UPSTREAM.

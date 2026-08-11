@@ -1,0 +1,12 @@
+[
+  {
+    "stepTitle": "升级 Vaultwarden",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "升级会保留现有密码库和应用配置。升级前仍建议导出密码库并备份应用数据目录。"
+      }
+    ]
+  }
+]
+

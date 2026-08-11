@@ -1,0 +1,134 @@
+name: 构建最新 Vaultwarden FPK
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "指定 Vaultwarden 版本；留空则使用上游最新稳定版"
+        required: false
+        type: string
+      force:
+        description: "覆盖同版本、同打包修订的 Release 资产"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vaultwarden-fpk-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: 检出打包仓库
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: 确定上游版本和发布状态
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+          FORCE_BUILD: ${{ inputs.force }}
+        run: |
+          set -euo pipefail
+          version="${REQUESTED_VERSION#v}"
+          if [ -z "${version}" ]; then
+            version="$(gh api repos/dani-garcia/vaultwarden/releases/latest --jq '.tag_name | ltrimstr("v")')"
+          fi
+          revision="$(tr -cd '0-9' < PACKAGING_REVISION)"
+          test -n "${revision}"
+          tag="v${version}-fnos.${revision}"
+          should_build=true
+          if gh release view "${tag}" >/dev/null 2>&1 && [ "${FORCE_BUILD}" != "true" ]; then
+            should_build=false
+          fi
+          {
+            echo "version=${version}"
+            echo "revision=${revision}"
+            echo "tag=${tag}"
+            echo "should_build=${should_build}"
+          } >> "${GITHUB_OUTPUT}"
+          echo "### Vaultwarden ${version} / FPK 修订 ${revision}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "构建：${should_build}" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: 安装构建依赖
+        if: steps.release.outputs.should_build == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends imagemagick jq file
+
+      - name: 注入版本和更新源
+        if: steps.release.outputs.should_build == 'true'
+        run: |
+          chmod +x scripts/*.sh packaging/vaultwarden/cmd/* packaging/vaultwarden/app/server/check-update packaging/vaultwarden/app/ui/update.cgi
+          ./scripts/prepare-release.sh "${{ steps.release.outputs.version }}" "${GITHUB_REPOSITORY}"
+
+      - name: 构建并校验 FPK
+        if: steps.release.outputs.should_build == 'true'
+        env:
+          VAULTWARDEN_VERSION: ${{ steps.release.outputs.version }}
+          VAULTWARDEN_AMD64_MANIFEST: ""
+        run: make build
+
+      - name: 生成发布资产
+        if: steps.release.outputs.should_build == 'true'
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          asset="dist/vaultwarden-${VERSION}-fnos.fpk"
+          mv dist/vaultwarden.fpk "${asset}"
+          checksum="$(sha256sum "${asset}" | awk '{print $1}')"
+          fpk_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/$(basename "${asset}")"
+          {
+            echo "VERSION=${VERSION}"
+            echo "FPK_URL=${fpk_url}"
+            echo "SHA256=${checksum}"
+            echo "PUBLISHED_AT=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          } > dist/latest.env
+          sha256sum "${asset}" > dist/SHA256SUMS
+
+      - name: 保存构建产物
+        if: steps.release.outputs.should_build == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: vaultwarden-${{ steps.release.outputs.version }}-fnos
+          path: |
+            dist/*.fpk
+            dist/latest.env
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: 创建或更新 GitHub Release
+        if: steps.release.outputs.should_build == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          notes_file="$(mktemp)"
+          {
+            echo "Vaultwarden ${VERSION} 的飞牛 fnOS 原生 FPK。"
+            echo
+            echo "- 上游版本：https://github.com/dani-garcia/vaultwarden/releases/tag/${VERSION}"
+            echo "- 架构：x86_64"
+            echo "- 运行期不依赖 Docker"
+            echo "- 安装前请校验 SHA256SUMS"
+          } > "${notes_file}"
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" dist/*.fpk dist/latest.env dist/SHA256SUMS --clobber
+            gh release edit "${RELEASE_TAG}" --latest --title "Vaultwarden ${VERSION} for fnOS" --notes-file "${notes_file}"
+          else
+            gh release create "${RELEASE_TAG}" dist/*.fpk dist/latest.env dist/SHA256SUMS \
+              --latest --title "Vaultwarden ${VERSION} for fnOS" --notes-file "${notes_file}"
+          fi

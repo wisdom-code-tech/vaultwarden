@@ -1,0 +1,5 @@
+version=1.37.1
+source=https://github.com/dani-garcia/vaultwarden/tree/1.37.1
+source_commit=2629bcbe1380c894e3a7f52cafcac3988edb8fbb
+image=docker.io/vaultwarden/server:1.37.1-alpine
+manifest=sha256:8e40ec37553bdfdf608d3f66ae17474ff6e53db44f1d8a7fa0685862f3db52ed

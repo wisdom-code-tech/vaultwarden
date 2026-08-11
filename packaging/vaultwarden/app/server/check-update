@@ -1,0 +1,91 @@
+#!/bin/bash
+
+UPSTREAM_FILE="${TRIM_APPDEST}/server/UPSTREAM"
+REPOSITORY_FILE="${TRIM_APPDEST}/server/UPDATE_REPOSITORY"
+STATUS_FILE="${TRIM_PKGVAR}/update-status.env"
+LOG_FILE="${TRIM_PKGVAR}/vaultwarden.log"
+INTERVAL="${UPDATE_CHECK_INTERVAL:-86400}"
+
+log_update() {
+  printf '%s [update] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" >> "${LOG_FILE}"
+}
+
+download_manifest() {
+  url="$1"
+  destination="$2"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL --connect-timeout 10 --max-time 30 "${url}" -o "${destination}"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -T 30 -O "${destination}" "${url}"
+  else
+    return 127
+  fi
+}
+
+read_value() {
+  key="$1"
+  file="$2"
+  sed -n "s/^${key}=//p" "${file}" | head -n 1
+}
+
+check_once() {
+  current_version="$(read_value version "${UPSTREAM_FILE}")"
+  update_repository="$(head -n 1 "${REPOSITORY_FILE}" 2>/dev/null | tr -d '[:space:]')"
+  case "${update_repository}" in
+    [A-Za-z0-9_.-]*/[A-Za-z0-9_.-]*) ;;
+    *) return 0 ;;
+  esac
+
+  manifest_url="${UPDATE_MANIFEST_URL:-https://github.com/${update_repository}/releases/latest/download/latest.env}"
+  temp_file="${TRIM_PKGVAR}/update-manifest.tmp.$$"
+  if ! download_manifest "${manifest_url}" "${temp_file}"; then
+    log_update "检查失败：无法下载 ${manifest_url}"
+    return 0
+  fi
+
+  latest_version="$(read_value VERSION "${temp_file}")"
+  fpk_url="$(read_value FPK_URL "${temp_file}")"
+  fpk_sha256="$(read_value SHA256 "${temp_file}")"
+  case "${latest_version}" in
+    ''|*[!0-9.]*)
+      log_update "检查失败：更新清单版本无效"
+      rm -f "${temp_file}"
+      return 0
+      ;;
+  esac
+  case "${fpk_url}" in https://github.com/*) ;; *) fpk_url="" ;; esac
+  case "${fpk_sha256}" in ''|*[!0-9a-f]*) fpk_sha256="" ;; esac
+
+  highest_version="$(printf '%s\n%s\n' "${current_version}" "${latest_version}" | sort -V | tail -n 1)"
+  update_available="false"
+  if [ "${highest_version}" = "${latest_version}" ] && [ "${latest_version}" != "${current_version}" ]; then
+    update_available="true"
+    log_update "发现新版本 ${latest_version}：${fpk_url}"
+  fi
+
+  status_temp="${STATUS_FILE}.tmp.$$"
+  {
+    printf 'CURRENT_VERSION=%s\n' "${current_version}"
+    printf 'LATEST_VERSION=%s\n' "${latest_version}"
+    printf 'UPDATE_AVAILABLE=%s\n' "${update_available}"
+    printf 'FPK_URL=%s\n' "${fpk_url}"
+    printf 'SHA256=%s\n' "${fpk_sha256}"
+    printf 'CHECKED_AT=%s\n' "$(date '+%Y-%m-%d %H:%M:%S')"
+  } > "${status_temp}"
+  chmod 0600 "${status_temp}"
+  mv "${status_temp}" "${STATUS_FILE}"
+  rm -f "${temp_file}"
+}
+
+case "${1:-once}" in
+  once) check_once ;;
+  loop)
+    case "${INTERVAL}" in ''|*[!0-9]*) INTERVAL=86400 ;; esac
+    [ "${INTERVAL}" -ge 3600 ] 2>/dev/null || INTERVAL=3600
+    while true; do
+      check_once
+      sleep "${INTERVAL}"
+    done
+    ;;
+  *) exit 1 ;;
+esac

@@ -1,0 +1,17 @@
+#!/bin/bash
+
+if [ "${wizard_data_action:-keep}" = "delete" ]; then
+  case "${TRIM_PKGVAR:-}" in
+    /var/apps/vaultwarden/var|/vol*/@appdata/vaultwarden)
+      find "${TRIM_PKGVAR}" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+      ;;
+    *)
+      if [ -n "${TRIM_TEMP_LOGFILE:-}" ]; then
+        printf '%s\n' "拒绝删除未识别的数据目录。" > "${TRIM_TEMP_LOGFILE}"
+      fi
+      exit 1
+      ;;
+  esac
+fi
+exit 0
+

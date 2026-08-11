@@ -1,0 +1,15 @@
+#!/bin/bash
+
+port="${wizard_port:-8222}"
+case "${port}" in
+  ''|*[!0-9]*)
+    printf '%s\n' "端口必须是数字。" > "${TRIM_TEMP_LOGFILE}"
+    exit 1
+    ;;
+esac
+if [ "${port}" -lt 1024 ] || [ "${port}" -gt 65535 ]; then
+  printf '%s\n' "端口必须在 1024 到 65535 之间。" > "${TRIM_TEMP_LOGFILE}"
+  exit 1
+fi
+exit 0
+

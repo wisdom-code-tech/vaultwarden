@@ -1,0 +1,6 @@
+#!/bin/bash
+
+mkdir -p "${TRIM_PKGVAR}/data" "${TRIM_PKGVAR}/tmp"
+chmod 0700 "${TRIM_PKGVAR}/data"
+exit 0
+
