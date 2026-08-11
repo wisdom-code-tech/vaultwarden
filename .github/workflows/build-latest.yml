@@ -44,7 +44,8 @@ jobs:
           fi
           revision="$(tr -cd '0-9' < PACKAGING_REVISION)"
           test -n "${revision}"
-          tag="v${version}-fnos.${revision}"
+          package_version="${version}-rc${revision}"
+          tag="v${package_version}"
           should_build=true
           if gh release view "${tag}" >/dev/null 2>&1 && [ "${FORCE_BUILD}" != "true" ]; then
             should_build=false
@@ -52,11 +53,19 @@ jobs:
           {
             echo "version=${version}"
             echo "revision=${revision}"
+            echo "package_version=${package_version}"
             echo "tag=${tag}"
             echo "should_build=${should_build}"
           } >> "${GITHUB_OUTPUT}"
-          echo "### Vaultwarden ${version} / FPK 修订 ${revision}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "### Vaultwarden ${package_version}" >> "${GITHUB_STEP_SUMMARY}"
           echo "构建：${should_build}" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: 配置 Go
+        if: steps.release.outputs.should_build == 'true'
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: gateway/go.mod
+          cache-dependency-path: gateway/go.mod
 
       - name: 安装构建依赖
         if: steps.release.outputs.should_build == 'true'
@@ -68,7 +77,7 @@ jobs:
         if: steps.release.outputs.should_build == 'true'
         run: |
           chmod +x scripts/*.sh packaging/vaultwarden/cmd/* packaging/vaultwarden/app/server/check-update packaging/vaultwarden/app/ui/update.cgi
-          ./scripts/prepare-release.sh "${{ steps.release.outputs.version }}" "${GITHUB_REPOSITORY}"
+          ./scripts/prepare-release.sh "${{ steps.release.outputs.version }}" "${{ steps.release.outputs.revision }}" "${GITHUB_REPOSITORY}"
 
       - name: 构建并校验 FPK
         if: steps.release.outputs.should_build == 'true'
@@ -81,15 +90,17 @@ jobs:
         if: steps.release.outputs.should_build == 'true'
         env:
           VERSION: ${{ steps.release.outputs.version }}
+          PACKAGE_VERSION: ${{ steps.release.outputs.package_version }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: |
           set -euo pipefail
-          asset="dist/vaultwarden-${VERSION}-fnos.fpk"
+          asset="dist/vaultwarden-${PACKAGE_VERSION}-fnos.fpk"
           mv dist/vaultwarden.fpk "${asset}"
           checksum="$(sha256sum "${asset}" | awk '{print $1}')"
           fpk_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/$(basename "${asset}")"
           {
-            echo "VERSION=${VERSION}"
+            echo "VERSION=${PACKAGE_VERSION}"
+            echo "UPSTREAM_VERSION=${VERSION}"
             echo "FPK_URL=${fpk_url}"
             echo "SHA256=${checksum}"
             echo "PUBLISHED_AT=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
@@ -100,7 +111,7 @@ jobs:
         if: steps.release.outputs.should_build == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: vaultwarden-${{ steps.release.outputs.version }}-fnos
+          name: vaultwarden-${{ steps.release.outputs.package_version }}-fnos
           path: |
             dist/*.fpk
             dist/latest.env
@@ -113,12 +124,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.release.outputs.version }}
+          PACKAGE_VERSION: ${{ steps.release.outputs.package_version }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: |
           set -euo pipefail
           notes_file="$(mktemp)"
           {
-            echo "Vaultwarden ${VERSION} 的飞牛 fnOS 原生 FPK。"
+            echo "Vaultwarden ${VERSION} 的飞牛 fnOS 原生 FPK（包版本 ${PACKAGE_VERSION}）。"
             echo
             echo "- 上游版本：https://github.com/dani-garcia/vaultwarden/releases/tag/${VERSION}"
             echo "- 架构：x86_64"
@@ -127,8 +139,9 @@ jobs:
           } > "${notes_file}"
           if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
             gh release upload "${RELEASE_TAG}" dist/*.fpk dist/latest.env dist/SHA256SUMS --clobber
-            gh release edit "${RELEASE_TAG}" --latest --title "Vaultwarden ${VERSION} for fnOS" --notes-file "${notes_file}"
+            gh release edit "${RELEASE_TAG}" --latest --title "Vaultwarden ${PACKAGE_VERSION} for fnOS" --notes-file "${notes_file}"
           else
             gh release create "${RELEASE_TAG}" dist/*.fpk dist/latest.env dist/SHA256SUMS \
-              --latest --title "Vaultwarden ${VERSION} for fnOS" --notes-file "${notes_file}"
+              --latest --target "${GITHUB_SHA}" \
+              --title "Vaultwarden ${PACKAGE_VERSION} for fnOS" --notes-file "${notes_file}"
           fi

@@ -6,13 +6,22 @@
 
 - Vaultwarden 固定为 `1.37.1`，从官方 `vaultwarden/server:1.37.1-alpine` 的 `linux/amd64` 镜像提取。
 - 使用官方静态 PIE x86_64 产物和 Web Vault，不依赖 fnOS 的 glibc 版本。
+- 使用静态 Go 代理监听 `${TRIM_APPDEST}/vaultwarden.sock`，通过 fnOS 统一网关转发到仅监听 `127.0.0.1:8222` 的 Vaultwarden。
 - 密码库数据、附件、密钥和 SQLite 数据库保存在 `$TRIM_PKGVAR/data`。
 - 应用配置保存在 `$TRIM_PKGETC/vaultwarden.env`，不会因升级而覆盖。
 - 默认关闭新用户注册；管理入口为 `/admin`。
 
+统一网关访问前缀固定为 `/app/vaultwarden`。安装、配置或从旧版升级时，需要填写完整地址，例如：
+
+```text
+https://nas.example.com/app/vaultwarden
+```
+
+代理会原样保留此前缀和 WebSocket Upgrade 请求；Vaultwarden 的 `DOMAIN` 必须与该地址一致。
+
 ## 构建
 
-依赖：`bash`、`curl`、`jq`、`tar`、`file`、`fnpack >= 1.2.1`。
+依赖：`bash`、`curl`、`jq`、`tar`、`file`、`Go >= 1.22`、`fnpack >= 1.2.1`。
 
 ```bash
 make build
@@ -27,7 +36,7 @@ make build
 1. 若当前“上游版本 + `PACKAGING_REVISION`”尚未发布，则提取官方 `linux/amd64` 静态产物。
 2. 使用官方 `fnpack 1.2.1` 构建并校验 FPK。
 3. 创建 GitHub Release，上传 FPK、`SHA256SUMS` 和供 NAS 读取的 `latest.env`。
-4. 同版本需要发布新的打包实现时，递增根目录的 `PACKAGING_REVISION`。
+4. 同版本需要发布新的打包实现时，递增根目录的 `PACKAGING_REVISION`。例如上游 `1.37.1`、修订号 `2` 会生成 FPK 版本 `1.37.1-rc2`，确保 fnOS 能区分同一上游版本的不同包。
 
 也可以从 Actions 页面手动指定 Vaultwarden 版本。Action 会把当前 `owner/repository` 注入 FPK，因此无需在源码中硬编码你的 GitHub 地址。
 
