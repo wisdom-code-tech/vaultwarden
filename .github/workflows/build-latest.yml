@@ -130,5 +130,6 @@ jobs:
             gh release edit "${RELEASE_TAG}" --latest --title "Vaultwarden ${VERSION} for fnOS" --notes-file "${notes_file}"
           else
             gh release create "${RELEASE_TAG}" dist/*.fpk dist/latest.env dist/SHA256SUMS \
-              --latest --title "Vaultwarden ${VERSION} for fnOS" --notes-file "${notes_file}"
+              --latest --target "${GITHUB_SHA}" \
+              --title "Vaultwarden ${VERSION} for fnOS" --notes-file "${notes_file}"
           fi
