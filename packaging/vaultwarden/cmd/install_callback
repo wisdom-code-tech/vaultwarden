@@ -16,7 +16,7 @@ if [ ! -f "${ENV_FILE}" ]; then
   {
     write_setting PORT "${wizard_port:-8222}"
     write_setting SIGNUPS_ALLOWED "${wizard_signups_allowed:-false}"
-    write_setting ENABLE_WEBSOCKET "true"
+    write_setting ENABLE_WEBSOCKET "${wizard_enable_websocket:-true}"
   } > "${temp_file}"
   chmod 0600 "${temp_file}"
   mv "${temp_file}" "${ENV_FILE}"

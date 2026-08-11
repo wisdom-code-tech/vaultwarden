@@ -10,8 +10,9 @@
 - 密码库数据、附件、密钥和 SQLite 数据库保存在 `$TRIM_PKGVAR/data`。
 - 应用配置保存在 `$TRIM_PKGETC/vaultwarden.env`，不会因升级而覆盖。
 - 默认关闭新用户注册；管理后台和 `ADMIN_TOKEN` 均不启用。
+- 可在 fnOS“应用设置 → 运行设置”中修改本地端口、注册开关和 WebSocket 通知；保存后自动重启生效。
 
-Vaultwarden 不设置显式 `DOMAIN`，启动后立即在 `127.0.0.1:8222` 的根路径提供服务。端口隧道或反向代理的上游只需填写 `http://127.0.0.1:8222`。
+Vaultwarden 不设置显式 `DOMAIN`，默认在 `127.0.0.1:8222` 的根路径提供服务。端口隧道或反向代理的上游只需填写 `http://127.0.0.1:8222`；修改本地端口后使用对应的新端口。
 
 统一网关访问前缀固定为 `/app/vaultwarden`。静态 Go 适配器会把 fnOS 转发到 Unix Socket 的公开前缀剥离，再转发到 Vaultwarden 根路径；WebSocket Upgrade 请求会原样透传。
 
