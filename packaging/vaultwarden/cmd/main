@@ -33,6 +33,10 @@ load_environment() {
     . "${ENV_FILE}"
     set +a
   fi
+  # Vaultwarden 会拒绝“已定义但为空”的 DOMAIN；空值应等同于未配置。
+  if [ -z "${DOMAIN:-}" ]; then
+    unset DOMAIN
+  fi
   export DATA_FOLDER="${TRIM_PKGVAR}/data"
   export WEB_VAULT_FOLDER="${TRIM_APPDEST}/server/web-vault"
   export ROCKET_ADDRESS="0.0.0.0"
