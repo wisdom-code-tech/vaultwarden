@@ -3,13 +3,16 @@
 mkdir -p "${TRIM_PKGVAR}/data" "${TRIM_PKGVAR}/tmp" "${TRIM_PKGETC}"
 chmod 0700 "${TRIM_PKGVAR}/data"
 
-# rc3 及更早版本由向导写入 DOMAIN；统一网关现在从真实请求自动推导。
+# 清理旧版本已废弃的用户配置；DOMAIN 由统一网关从真实请求自动推导。
 ENV_FILE="${TRIM_PKGETC}/vaultwarden.env"
 if [ -f "${ENV_FILE}" ]; then
   temp_file="${ENV_FILE}.tmp.$$"
-  sed '/^DOMAIN=/d' "${ENV_FILE}" > "${temp_file}"
+  sed '/^DOMAIN=/d; /^AUTO_CHECK_UPDATES=/d' "${ENV_FILE}" > "${temp_file}"
   chmod 0600 "${temp_file}"
   mv "${temp_file}" "${ENV_FILE}"
 fi
-rm -f "${TRIM_PKGVAR}/gateway-domain"
+rm -f \
+  "${TRIM_PKGVAR}/gateway-domain" \
+  "${TRIM_PKGVAR}/update-status.env" \
+  "${TRIM_PKGVAR}/update-checker.pid"
 exit 0

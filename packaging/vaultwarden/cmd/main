@@ -8,8 +8,6 @@ GATEWAY_DOMAIN_CACHE="${TRIM_PKGVAR}/gateway-domain"
 ENV_FILE="${TRIM_PKGETC}/vaultwarden.env"
 GATEWAY_PID_FILE="${TRIM_PKGVAR}/gateway-proxy.pid"
 LOG_FILE="${TRIM_PKGVAR}/vaultwarden.log"
-UPDATE_CHECKER="${TRIM_APPDEST}/server/check-update"
-UPDATE_PID_FILE="${TRIM_PKGVAR}/update-checker.pid"
 
 report_error() {
   if [ -n "${TRIM_TEMP_LOGFILE:-}" ]; then
@@ -44,34 +42,6 @@ load_environment() {
   export SSL_CERT_FILE="${TRIM_APPDEST}/server/runtime/etc/ssl/certs/ca-certificates.crt"
 }
 
-start_update_checker() {
-  [ "${AUTO_CHECK_UPDATES:-true}" = "true" ] || return 0
-  [ -x "${UPDATE_CHECKER}" ] || return 0
-  [ -s "${TRIM_APPDEST}/server/UPDATE_REPOSITORY" ] || return 0
-  if [ -r "${UPDATE_PID_FILE}" ]; then
-    update_pid="$(head -n 1 "${UPDATE_PID_FILE}" | tr -cd '0-9')"
-    if [ -n "${update_pid}" ] && kill -0 "${update_pid}" 2>/dev/null; then
-      return 0
-    fi
-  fi
-  TRIM_APPDEST="${TRIM_APPDEST}" TRIM_PKGVAR="${TRIM_PKGVAR}" \
-    UPDATE_CHECK_INTERVAL="${UPDATE_CHECK_INTERVAL:-86400}" \
-    UPDATE_MANIFEST_URL="${UPDATE_MANIFEST_URL:-}" \
-    "${UPDATE_CHECKER}" loop >> "${LOG_FILE}" 2>&1 &
-  update_pid=$!
-  printf '%s\n' "${update_pid}" > "${UPDATE_PID_FILE}"
-}
-
-stop_update_checker() {
-  if [ -r "${UPDATE_PID_FILE}" ]; then
-    update_pid="$(head -n 1 "${UPDATE_PID_FILE}" | tr -cd '0-9')"
-    if [ -n "${update_pid}" ] && kill -0 "${update_pid}" 2>/dev/null; then
-      kill -TERM "${update_pid}" 2>/dev/null || true
-    fi
-  fi
-  rm -f "${UPDATE_PID_FILE}"
-}
-
 start_app() {
   if is_running; then
     return 0
@@ -104,11 +74,9 @@ start_app() {
     report_error "统一网关代理启动失败，请检查 ${LOG_FILE}。"
     return 1
   fi
-  start_update_checker
 }
 
 stop_app() {
-  stop_update_checker
   if is_running; then
     kill -TERM "${gateway_pid}" 2>/dev/null || true
     count=0

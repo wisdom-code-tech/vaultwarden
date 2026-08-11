@@ -9,8 +9,7 @@ required_files=(
   ICON.PNG ICON_256.PNG LICENSE
   app/ui/config app/ui/images/icon_64.png app/ui/images/icon_256.png
   app/server/vaultwarden app/server/runtime/etc/ssl/certs/ca-certificates.crt
-  app/server/check-update app/server/gateway-proxy app/ui/update.cgi
-  app/server/PACKAGE_VERSION
+  app/server/gateway-proxy
   cmd/main cmd/install_init cmd/install_callback
   cmd/uninstall_init cmd/uninstall_callback
   cmd/upgrade_init cmd/upgrade_callback
@@ -33,14 +32,6 @@ for script_file in "${PACKAGE_DIR}"/cmd/*; do
   bash -n "${script_file}"
   if [ ! -x "${script_file}" ]; then
     echo "生命周期脚本不可执行: ${script_file}" >&2
-    exit 1
-  fi
-done
-
-for script_file in "${PACKAGE_DIR}/app/server/check-update" "${PACKAGE_DIR}/app/ui/update.cgi"; do
-  bash -n "${script_file}"
-  if [ ! -x "${script_file}" ]; then
-    echo "应用脚本不可执行: ${script_file}" >&2
     exit 1
   fi
 done

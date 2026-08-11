@@ -20,12 +20,6 @@
           {"label": "关闭（推荐）", "value": "false"},
           {"label": "开启", "value": "true"}
         ]
-      },
-      {
-        "type": "switch",
-        "field": "wizard_auto_check_updates",
-        "label": "每天自动检查 FPK 更新",
-        "initValue": "true"
       }
     ]
   },
