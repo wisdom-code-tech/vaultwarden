@@ -1,10 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -78,5 +82,75 @@ func TestReverseProxyRestoresStrippedGatewayPrefix(t *testing.T) {
 	response.Body.Close()
 	if path := <-receivedPath; path != "/app/vaultwarden/identity/connect/token" {
 		t.Fatalf("gateway prefix was not restored: %s", path)
+	}
+}
+
+func TestPublicDomainUsesGatewayHeaders(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "http://unix/app/vaultwarden/", nil)
+	request.Host = "internal.socket"
+	request.Header.Set("X-Forwarded-Proto", "https")
+	request.Header.Set("X-Forwarded-Host", "nas.example.test:5667")
+
+	domain, err := publicDomain(request, "/app/vaultwarden")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if domain != "https://nas.example.test:5667/app/vaultwarden" {
+		t.Fatalf("unexpected public domain: %s", domain)
+	}
+}
+
+func TestEnvironmentWithDomainReplacesOldValue(t *testing.T) {
+	environment := environmentWithDomain([]string{"PORT=8222", "DOMAIN=https://old.invalid"}, "https://nas/app/vaultwarden")
+	if slices.Contains(environment, "DOMAIN=https://old.invalid") {
+		t.Fatal("old DOMAIN was retained")
+	}
+	if !slices.Contains(environment, "DOMAIN=https://nas/app/vaultwarden") {
+		t.Fatal("new DOMAIN was not injected")
+	}
+}
+
+func TestDomainCacheRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "gateway-domain")
+	domain := "https://nas.example.test/app/vaultwarden"
+	if err := writeDomainCache(path, domain); err != nil {
+		t.Fatal(err)
+	}
+	if got := readDomainCache(path, "/app/vaultwarden"); got != domain {
+		t.Fatalf("unexpected cached domain: %s", got)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("unexpected cache permissions: %o", info.Mode().Perm())
+	}
+}
+
+func TestSyncConfigDomainPreservesOtherSettings(t *testing.T) {
+	dataFolder := t.TempDir()
+	configPath := filepath.Join(dataFolder, "config.json")
+	initial := []byte(`{"domain":"https://old.invalid","signups_allowed":false,"smtp_host":"mail.example.test"}`)
+	if err := os.WriteFile(configPath, initial, 0600); err != nil {
+		t.Fatal(err)
+	}
+	newDomain := "https://nas.example.test/app/vaultwarden"
+	if err := syncConfigDomain(dataFolder, newDomain); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var values map[string]any
+	if err := json.Unmarshal(data, &values); err != nil {
+		t.Fatal(err)
+	}
+	if values["domain"] != newDomain {
+		t.Fatalf("domain was not updated: %v", values["domain"])
+	}
+	if values["signups_allowed"] != false || values["smtp_host"] != "mail.example.test" {
+		t.Fatalf("unrelated settings changed: %#v", values)
 	}
 }

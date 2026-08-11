@@ -11,11 +11,4 @@ if [ "${port}" -lt 1024 ] || [ "${port}" -gt 65535 ]; then
   printf '%s\n' "端口必须在 1024 到 65535 之间。" > "${TRIM_TEMP_LOGFILE}"
   exit 1
 fi
-case "${wizard_domain:-}" in
-  https://*/app/vaultwarden|https://*/app/vaultwarden/) ;;
-  *)
-    printf '%s\n' "统一网关地址必须是 https://主机/app/vaultwarden。" > "${TRIM_TEMP_LOGFILE}"
-    exit 1
-    ;;
-esac
 exit 0

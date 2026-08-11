@@ -5,16 +5,6 @@
       {
         "type": "tips",
         "helpText": "升级会保留现有密码库和应用配置。升级前仍建议导出密码库并备份应用数据目录。"
-      },
-      {
-        "type": "text",
-        "field": "wizard_domain",
-        "label": "统一网关完整地址",
-        "initValue": "",
-        "rules": [
-          {"required": true, "message": "升级到统一网关模式需要填写访问地址"},
-          {"pattern": "^https://.+/app/vaultwarden/?$", "message": "格式必须为 https://主机/app/vaultwarden"}
-        ]
       }
     ]
   }

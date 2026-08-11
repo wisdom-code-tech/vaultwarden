@@ -13,8 +13,6 @@ mkdir -p "${TRIM_PKGETC}"
 temp_file="${ENV_FILE}.tmp.$$"
 {
   write_setting PORT "${wizard_port:-8222}"
-  domain="${wizard_domain%/}"
-  write_setting DOMAIN "${domain}"
   write_setting ADMIN_TOKEN "${wizard_admin_token:-}"
   write_setting SIGNUPS_ALLOWED "${wizard_signups_allowed:-false}"
   write_setting ENABLE_WEBSOCKET "true"

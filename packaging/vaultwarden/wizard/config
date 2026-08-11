@@ -3,15 +3,6 @@
     "stepTitle": "Vaultwarden 设置",
     "items": [
       {
-        "type": "text",
-        "field": "wizard_domain",
-        "label": "统一网关完整地址",
-        "rules": [
-          {"required": true, "message": "请输入统一网关完整地址"},
-          {"pattern": "^https://.+/app/vaultwarden/?$", "message": "格式必须为 https://主机/app/vaultwarden"}
-        ]
-      },
-      {
         "type": "password",
         "field": "wizard_admin_token",
         "label": "管理后台令牌",

@@ -11,13 +11,9 @@
 - 应用配置保存在 `$TRIM_PKGETC/vaultwarden.env`，不会因升级而覆盖。
 - 默认关闭新用户注册；管理入口为 `/admin`。
 
-统一网关访问前缀固定为 `/app/vaultwarden`。安装、配置或从旧版升级时，需要填写完整地址，例如：
+统一网关访问前缀固定为 `/app/vaultwarden`。访问地址由 fnOS 自动生成；代理会从首个网关请求的协议和 Host 自动生成 Vaultwarden 的 `DOMAIN`，无需在安装、配置或升级向导中手工填写。检测结果保存在应用数据目录的 `gateway-domain` 文件中，访问主机发生变化时会自动刷新并重启后端。
 
-```text
-https://nas.example.com/app/vaultwarden
-```
-
-代理会原样保留此前缀和 WebSocket Upgrade 请求；Vaultwarden 的 `DOMAIN` 必须与该地址一致。
+代理会原样保留此前缀和 WebSocket Upgrade 请求；若 fnOS 转发时剥离前缀，代理会自动补回一次。
 
 ## 构建
 

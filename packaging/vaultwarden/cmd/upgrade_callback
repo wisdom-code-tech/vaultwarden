@@ -1,21 +1,15 @@
 #!/bin/bash
 
-mkdir -p "${TRIM_PKGVAR}/data" "${TRIM_PKGVAR}/tmp"
+mkdir -p "${TRIM_PKGVAR}/data" "${TRIM_PKGVAR}/tmp" "${TRIM_PKGETC}"
 chmod 0700 "${TRIM_PKGVAR}/data"
 
-if [ -n "${wizard_domain:-}" ]; then
-  ENV_FILE="${TRIM_PKGETC}/vaultwarden.env"
-  mkdir -p "${TRIM_PKGETC}"
+# rc3 及更早版本由向导写入 DOMAIN；统一网关现在从真实请求自动推导。
+ENV_FILE="${TRIM_PKGETC}/vaultwarden.env"
+if [ -f "${ENV_FILE}" ]; then
   temp_file="${ENV_FILE}.tmp.$$"
-  if [ -f "${ENV_FILE}" ]; then
-    sed '/^DOMAIN=/d' "${ENV_FILE}" > "${temp_file}"
-  else
-    : > "${temp_file}"
-  fi
-  domain="${wizard_domain%/}"
-  escaped="$(printf '%s' "${domain}" | sed "s/'/'\\\\''/g")"
-  printf "DOMAIN='%s'\n" "${escaped}" >> "${temp_file}"
+  sed '/^DOMAIN=/d' "${ENV_FILE}" > "${temp_file}"
   chmod 0600 "${temp_file}"
   mv "${temp_file}" "${ENV_FILE}"
 fi
+rm -f "${TRIM_PKGVAR}/gateway-domain"
 exit 0
