@@ -11,18 +11,23 @@ write_setting() {
 
 mkdir -p "${TRIM_PKGETC}" "${TRIM_PKGVAR}/data" "${TRIM_PKGVAR}/tmp"
 chmod 0700 "${TRIM_PKGVAR}/data"
-if [ ! -f "${ENV_FILE}" ]; then
-  temp_file="${ENV_FILE}.tmp.$$"
-  {
-    write_setting PORT "${wizard_port:-8222}"
-    domain="${wizard_domain%/}"
-    write_setting DOMAIN "${domain}"
-    write_setting ADMIN_TOKEN "${wizard_admin_token:-}"
-    write_setting SIGNUPS_ALLOWED "${wizard_signups_allowed:-false}"
-    write_setting ENABLE_WEBSOCKET "true"
-    write_setting AUTO_CHECK_UPDATES "${wizard_auto_check_updates:-true}"
-  } > "${temp_file}"
-  chmod 0600 "${temp_file}"
-  mv "${temp_file}" "${ENV_FILE}"
+
+if [ -f "${ENV_FILE}" ] && [ "${wizard_existing_config_action:-overwrite}" = "keep" ]; then
+  exit 0
 fi
+
+temp_file="${ENV_FILE}.tmp.$$"
+if [ -f "${ENV_FILE}" ]; then
+  # 应用本次安装设置，同时保留 SMTP 等不由安装向导管理的高级配置。
+  sed '/^PORT=/d; /^SIGNUPS_ALLOWED=/d; /^ENABLE_WEBSOCKET=/d; /^DOMAIN=/d; /^ADMIN_TOKEN=/d; /^DISABLE_ADMIN_TOKEN=/d; /^AUTO_CHECK_UPDATES=/d' "${ENV_FILE}" > "${temp_file}"
+else
+  : > "${temp_file}"
+fi
+{
+  write_setting PORT "${wizard_port:-8222}"
+  write_setting SIGNUPS_ALLOWED "${wizard_signups_allowed:-false}"
+  write_setting ENABLE_WEBSOCKET "${wizard_enable_websocket:-true}"
+} >> "${temp_file}"
+chmod 0600 "${temp_file}"
+mv "${temp_file}" "${ENV_FILE}"
 exit 0

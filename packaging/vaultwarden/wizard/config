@@ -4,20 +4,12 @@
     "items": [
       {
         "type": "text",
-        "field": "wizard_domain",
-        "label": "统一网关完整地址",
+        "field": "wizard_port",
+        "label": "本地服务端口",
+        "initValue": "8222",
         "rules": [
-          {"required": true, "message": "请输入统一网关完整地址"},
-          {"pattern": "^https://.+/app/vaultwarden/?$", "message": "格式必须为 https://主机/app/vaultwarden"}
-        ]
-      },
-      {
-        "type": "password",
-        "field": "wizard_admin_token",
-        "label": "管理后台令牌",
-        "rules": [
-          {"required": true, "message": "请输入管理后台令牌"},
-          {"min": 12, "message": "令牌至少 12 个字符"}
+          {"required": true, "message": "请输入本地服务端口"},
+          {"pattern": "^[0-9]{4,5}$", "message": "端口必须是 1024 到 65535 之间的数字"}
         ]
       },
       {
@@ -31,10 +23,14 @@
         ]
       },
       {
-        "type": "switch",
-        "field": "wizard_auto_check_updates",
-        "label": "每天自动检查 FPK 更新",
-        "initValue": "true"
+        "type": "radio",
+        "field": "wizard_enable_websocket",
+        "label": "启用 WebSocket 通知",
+        "initValue": "true",
+        "options": [
+          {"label": "开启（推荐）", "value": "true"},
+          {"label": "关闭", "value": "false"}
+        ]
       }
     ]
   }

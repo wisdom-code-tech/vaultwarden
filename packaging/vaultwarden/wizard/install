@@ -4,21 +4,12 @@
     "items": [
       {
         "type": "text",
-        "field": "wizard_domain",
-        "label": "统一网关完整地址",
-        "initValue": "",
+        "field": "wizard_port",
+        "label": "本地服务端口",
+        "initValue": "8222",
         "rules": [
-          {"required": true, "message": "请输入统一网关完整地址"},
-          {"pattern": "^https://.+/app/vaultwarden/?$", "message": "格式必须为 https://主机/app/vaultwarden"}
-        ]
-      },
-      {
-        "type": "password",
-        "field": "wizard_admin_token",
-        "label": "管理后台令牌",
-        "rules": [
-          {"required": true, "message": "请输入管理后台令牌"},
-          {"min": 12, "message": "令牌至少 12 个字符"}
+          {"required": true, "message": "请输入本地服务端口"},
+          {"pattern": "^[0-9]{4,5}$", "message": "端口必须是 1024 到 65535 之间的数字"}
         ]
       },
       {
@@ -32,10 +23,27 @@
         ]
       },
       {
-        "type": "switch",
-        "field": "wizard_auto_check_updates",
-        "label": "每天自动检查 FPK 更新",
-        "initValue": "true"
+        "type": "radio",
+        "field": "wizard_enable_websocket",
+        "label": "启用 WebSocket 通知",
+        "initValue": "true",
+        "options": [
+          {"label": "开启（推荐）", "value": "true"},
+          {"label": "关闭", "value": "false"}
+        ]
+      },
+      {
+        "type": "radio",
+        "field": "wizard_existing_config_action",
+        "label": "发现已有 vaultwarden.env 时",
+        "initValue": "overwrite",
+        "options": [
+          {"label": "应用本次安装设置（推荐）", "value": "overwrite"},
+          {"label": "保留已有配置并跳过", "value": "keep"}
+        ],
+        "rules": [
+          {"required": true, "message": "请选择已有配置的处理方式"}
+        ]
       }
     ]
   },
@@ -44,7 +52,7 @@
     "items": [
       {
         "type": "tips",
-        "helpText": "应用通过 fnOS 统一网关访问，不再暴露服务端口。地址必须使用当前可访问飞牛系统的 HTTPS 主机名或 IP，并以 /app/vaultwarden 结尾。"
+        "helpText": "已有配置处理方式仅在检测到残留的 vaultwarden.env 时生效。Vaultwarden 管理后台已禁用；服务仅监听本机端口，可通过 fnOS 统一网关或 HTTPS 隧道访问。"
       }
     ]
   }

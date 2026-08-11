@@ -5,11 +5,8 @@ GATEWAY_BINARY="${TRIM_APPDEST}/server/gateway-proxy"
 GATEWAY_SOCKET="${TRIM_APPDEST}/vaultwarden.sock"
 GATEWAY_PREFIX="/app/vaultwarden"
 ENV_FILE="${TRIM_PKGETC}/vaultwarden.env"
-PID_FILE="${TRIM_PKGVAR}/vaultwarden.pid"
 GATEWAY_PID_FILE="${TRIM_PKGVAR}/gateway-proxy.pid"
 LOG_FILE="${TRIM_PKGVAR}/vaultwarden.log"
-UPDATE_CHECKER="${TRIM_APPDEST}/server/check-update"
-UPDATE_PID_FILE="${TRIM_PKGVAR}/update-checker.pid"
 
 report_error() {
   if [ -n "${TRIM_TEMP_LOGFILE:-}" ]; then
@@ -17,26 +14,42 @@ report_error() {
   fi
 }
 
-read_pid() {
-  [ -r "${PID_FILE}" ] || return 1
-  pid="$(head -n 1 "${PID_FILE}" | tr -cd '0-9')"
-  [ -n "${pid}" ] || return 1
-}
-
 is_running() {
-  read_pid || return 1
-  kill -0 "${pid}" 2>/dev/null || return 1
-  [ -r "/proc/${pid}/cmdline" ] || return 0
-  tr '\0' ' ' < "/proc/${pid}/cmdline" | grep -Fq "${APP_BINARY}"
-}
-
-is_gateway_running() {
   [ -r "${GATEWAY_PID_FILE}" ] || return 1
   gateway_pid="$(head -n 1 "${GATEWAY_PID_FILE}" | tr -cd '0-9')"
   [ -n "${gateway_pid}" ] || return 1
   kill -0 "${gateway_pid}" 2>/dev/null || return 1
   [ -r "/proc/${gateway_pid}/cmdline" ] || return 0
   tr '\0' ' ' < "/proc/${gateway_pid}/cmdline" | grep -Fq "${GATEWAY_BINARY}"
+}
+
+vaultwarden_pids() {
+  app_binary_real="$(readlink -f "${APP_BINARY}" 2>/dev/null || printf '%s' "${APP_BINARY}")"
+  for proc_exe in /proc/[0-9]*/exe; do
+    process_binary="$(readlink "${proc_exe}" 2>/dev/null || true)"
+    process_binary="${process_binary% (deleted)}"
+    [ "${process_binary}" = "${app_binary_real}" ] || continue
+    proc_dir="${proc_exe%/exe}"
+    printf '%s\n' "${proc_dir##*/}"
+  done
+}
+
+stop_orphaned_vaultwarden() {
+  vaultwarden_processes="$(vaultwarden_pids)"
+  [ -n "${vaultwarden_processes}" ] || return 0
+  for vaultwarden_pid in ${vaultwarden_processes}; do
+    kill -TERM "${vaultwarden_pid}" 2>/dev/null || true
+  done
+  count=0
+  while [ "${count}" -lt 10 ]; do
+    vaultwarden_processes="$(vaultwarden_pids)"
+    [ -z "${vaultwarden_processes}" ] && return 0
+    sleep 1
+    count=$((count + 1))
+  done
+  for vaultwarden_pid in ${vaultwarden_processes}; do
+    kill -KILL "${vaultwarden_pid}" 2>/dev/null || true
+  done
 }
 
 load_environment() {
@@ -46,10 +59,8 @@ load_environment() {
     . "${ENV_FILE}"
     set +a
   fi
-  # Vaultwarden 会拒绝“已定义但为空”的 DOMAIN；空值应等同于未配置。
-  if [ -z "${DOMAIN:-}" ]; then
-    unset DOMAIN
-  fi
+  # 无域名模式和禁用管理后台均不得被旧环境覆盖。
+  unset DOMAIN ADMIN_TOKEN DISABLE_ADMIN_TOKEN
   export DATA_FOLDER="${TRIM_PKGVAR}/data"
   export WEB_VAULT_FOLDER="${TRIM_APPDEST}/server/web-vault"
   export ROCKET_ADDRESS="127.0.0.1"
@@ -59,38 +70,47 @@ load_environment() {
   export SSL_CERT_FILE="${TRIM_APPDEST}/server/runtime/etc/ssl/certs/ca-certificates.crt"
 }
 
-start_gateway() {
-  if is_gateway_running; then
+start_app() {
+  if is_running; then
     return 0
   fi
-  rm -f "${GATEWAY_PID_FILE}"
-  if [ ! -x "${GATEWAY_BINARY}" ]; then
-    report_error "统一网关代理缺失，请重新安装应用。"
+  if [ ! -x "${APP_BINARY}" ] || [ ! -x "${GATEWAY_BINARY}" ]; then
+    report_error "Vaultwarden 或统一网关代理缺失，请重新安装应用。"
     return 1
   fi
   if [ -e "${GATEWAY_SOCKET}" ] && [ ! -S "${GATEWAY_SOCKET}" ]; then
     report_error "统一网关 Socket 路径被非 Socket 文件占用：${GATEWAY_SOCKET}"
     return 1
   fi
+
+  # rc6 及更早版本可能在代理退出后遗留 Vaultwarden 子进程。
+  stop_orphaned_vaultwarden
+
+  load_environment
+  mkdir -p "${TRIM_PKGVAR}/data" "${TRIM_PKGVAR}/tmp" "${HOME}"
+  chmod 0700 "${TRIM_PKGVAR}/data"
+  umask 077
+  rm -f "${GATEWAY_PID_FILE}"
   "${GATEWAY_BINARY}" \
     -socket "${GATEWAY_SOCKET}" \
     -upstream "http://127.0.0.1:${ROCKET_PORT}" \
-    -prefix "${GATEWAY_PREFIX}" >> "${LOG_FILE}" 2>&1 &
+    -prefix "${GATEWAY_PREFIX}" \
+    -vaultwarden "${APP_BINARY}" >> "${LOG_FILE}" 2>&1 &
   gateway_pid=$!
   printf '%s\n' "${gateway_pid}" > "${GATEWAY_PID_FILE}"
   sleep 1
-  if ! is_gateway_running || [ ! -S "${GATEWAY_SOCKET}" ]; then
+  if ! is_running || [ ! -S "${GATEWAY_SOCKET}" ]; then
     rm -f "${GATEWAY_PID_FILE}"
     report_error "统一网关代理启动失败，请检查 ${LOG_FILE}。"
     return 1
   fi
 }
 
-stop_gateway() {
-  if is_gateway_running; then
+stop_app() {
+  if is_running; then
     kill -TERM "${gateway_pid}" 2>/dev/null || true
     count=0
-    while kill -0 "${gateway_pid}" 2>/dev/null && [ "${count}" -lt 10 ]; do
+    while kill -0 "${gateway_pid}" 2>/dev/null && [ "${count}" -lt 30 ]; do
       sleep 1
       count=$((count + 1))
     done
@@ -98,100 +118,19 @@ stop_gateway() {
       kill -KILL "${gateway_pid}" 2>/dev/null || true
     fi
   fi
+  stop_orphaned_vaultwarden
   rm -f "${GATEWAY_PID_FILE}"
   if [ -S "${GATEWAY_SOCKET}" ]; then
     rm -f "${GATEWAY_SOCKET}"
   fi
 }
 
-start_update_checker() {
-  [ "${AUTO_CHECK_UPDATES:-true}" = "true" ] || return 0
-  [ -x "${UPDATE_CHECKER}" ] || return 0
-  [ -s "${TRIM_APPDEST}/server/UPDATE_REPOSITORY" ] || return 0
-  if [ -r "${UPDATE_PID_FILE}" ]; then
-    update_pid="$(head -n 1 "${UPDATE_PID_FILE}" | tr -cd '0-9')"
-    if [ -n "${update_pid}" ] && kill -0 "${update_pid}" 2>/dev/null; then
-      return 0
-    fi
-  fi
-  TRIM_APPDEST="${TRIM_APPDEST}" TRIM_PKGVAR="${TRIM_PKGVAR}" \
-    UPDATE_CHECK_INTERVAL="${UPDATE_CHECK_INTERVAL:-86400}" \
-    UPDATE_MANIFEST_URL="${UPDATE_MANIFEST_URL:-}" \
-    "${UPDATE_CHECKER}" loop >> "${LOG_FILE}" 2>&1 &
-  update_pid=$!
-  printf '%s\n' "${update_pid}" > "${UPDATE_PID_FILE}"
-}
-
-stop_update_checker() {
-  if [ -r "${UPDATE_PID_FILE}" ]; then
-    update_pid="$(head -n 1 "${UPDATE_PID_FILE}" | tr -cd '0-9')"
-    if [ -n "${update_pid}" ] && kill -0 "${update_pid}" 2>/dev/null; then
-      kill -TERM "${update_pid}" 2>/dev/null || true
-    fi
-  fi
-  rm -f "${UPDATE_PID_FILE}"
-}
-
-start_app() {
-  if [ ! -x "${APP_BINARY}" ]; then
-    report_error "Vaultwarden 原生程序缺失，请重新安装应用。"
-    return 1
-  fi
-  load_environment
-  case "${DOMAIN:-}" in
-    https://*/app/vaultwarden) ;;
-    *)
-      report_error "统一网关模式要求 DOMAIN 为 https://主机/app/vaultwarden。请在应用设置中填写。"
-      return 1
-      ;;
-  esac
-  mkdir -p "${TRIM_PKGVAR}/data" "${TRIM_PKGVAR}/tmp" "${HOME}"
-  chmod 0700 "${TRIM_PKGVAR}/data"
-  umask 077
-  if ! is_running; then
-    rm -f "${PID_FILE}"
-    cd "${TRIM_APPDEST}/server" || return 1
-    "${APP_BINARY}" >> "${LOG_FILE}" 2>&1 &
-    pid=$!
-    printf '%s\n' "${pid}" > "${PID_FILE}"
-    sleep 2
-    if ! is_running; then
-      rm -f "${PID_FILE}"
-      report_error "Vaultwarden 启动失败，请检查 ${LOG_FILE}。"
-      return 1
-    fi
-  fi
-  if ! start_gateway; then
-    stop_app
-    return 1
-  fi
-  start_update_checker
-}
-
-stop_app() {
-  stop_update_checker
-  stop_gateway
-  if ! is_running; then
-    rm -f "${PID_FILE}"
-    return 0
-  fi
-  kill -TERM "${pid}" 2>/dev/null || true
-  count=0
-  while kill -0 "${pid}" 2>/dev/null && [ "${count}" -lt 20 ]; do
-    sleep 1
-    count=$((count + 1))
-  done
-  if kill -0 "${pid}" 2>/dev/null; then
-    kill -KILL "${pid}" 2>/dev/null || true
-  fi
-  rm -f "${PID_FILE}"
-}
-
 case "${1:-}" in
   start) start_app ;;
   stop) stop_app ;;
+  cleanup) stop_orphaned_vaultwarden ;;
   status)
-    if is_running && is_gateway_running; then exit 0; else exit 3; fi
+    if is_running; then exit 0; else exit 3; fi
     ;;
   *) exit 1 ;;
 esac

@@ -1,21 +1,20 @@
 #!/bin/bash
 
-mkdir -p "${TRIM_PKGVAR}/data" "${TRIM_PKGVAR}/tmp"
+mkdir -p "${TRIM_PKGVAR}/data" "${TRIM_PKGVAR}/tmp" "${TRIM_PKGETC}"
 chmod 0700 "${TRIM_PKGVAR}/data"
 
-if [ -n "${wizard_domain:-}" ]; then
-  ENV_FILE="${TRIM_PKGETC}/vaultwarden.env"
-  mkdir -p "${TRIM_PKGETC}"
+# 清理旧版本写入的域名、更新检查和管理后台配置。
+ENV_FILE="${TRIM_PKGETC}/vaultwarden.env"
+if [ -f "${ENV_FILE}" ]; then
   temp_file="${ENV_FILE}.tmp.$$"
-  if [ -f "${ENV_FILE}" ]; then
-    sed '/^DOMAIN=/d' "${ENV_FILE}" > "${temp_file}"
-  else
-    : > "${temp_file}"
-  fi
-  domain="${wizard_domain%/}"
-  escaped="$(printf '%s' "${domain}" | sed "s/'/'\\\\''/g")"
-  printf "DOMAIN='%s'\n" "${escaped}" >> "${temp_file}"
+  sed '/^DOMAIN=/d; /^AUTO_CHECK_UPDATES=/d; /^ADMIN_TOKEN=/d; /^DISABLE_ADMIN_TOKEN=/d' "${ENV_FILE}" > "${temp_file}"
   chmod 0600 "${temp_file}"
   mv "${temp_file}" "${ENV_FILE}"
 fi
+rm -f \
+  "${TRIM_PKGVAR}/gateway-domain" \
+  "${TRIM_PKGVAR}/update-status.env" \
+  "${TRIM_PKGVAR}/update-checker.pid"
+# rc6 的网关退出竞态可能留下仍占用内部端口的 Vaultwarden 进程。
+bash "${0%/*}/main" cleanup
 exit 0

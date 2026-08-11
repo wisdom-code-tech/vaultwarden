@@ -1,9 +1,2 @@
 #!/bin/bash
-
-case "${wizard_domain:-}" in
-  https://*/app/vaultwarden|https://*/app/vaultwarden/) exit 0 ;;
-  *)
-    printf '%s\n' "统一网关地址必须是 https://主机/app/vaultwarden。" > "${TRIM_TEMP_LOGFILE}"
-    exit 1
-    ;;
-esac
+exit 0

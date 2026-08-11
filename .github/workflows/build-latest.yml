@@ -14,6 +14,11 @@ on:
         required: false
         default: false
         type: boolean
+      stable:
+        description: "发布不带 rc 后缀的正式版"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -36,6 +41,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REQUESTED_VERSION: ${{ inputs.version }}
           FORCE_BUILD: ${{ inputs.force }}
+          STABLE_RELEASE: ${{ inputs.stable }}
         run: |
           set -euo pipefail
           version="${REQUESTED_VERSION#v}"
@@ -44,7 +50,12 @@ jobs:
           fi
           revision="$(tr -cd '0-9' < PACKAGING_REVISION)"
           test -n "${revision}"
+          release_channel=rc
           package_version="${version}-rc${revision}"
+          if [ "${STABLE_RELEASE}" = "true" ]; then
+            release_channel=stable
+            package_version="${version}"
+          fi
           tag="v${package_version}"
           should_build=true
           if gh release view "${tag}" >/dev/null 2>&1 && [ "${FORCE_BUILD}" != "true" ]; then
@@ -54,6 +65,7 @@ jobs:
             echo "version=${version}"
             echo "revision=${revision}"
             echo "package_version=${package_version}"
+            echo "release_channel=${release_channel}"
             echo "tag=${tag}"
             echo "should_build=${should_build}"
           } >> "${GITHUB_OUTPUT}"
@@ -73,11 +85,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends imagemagick jq file
 
-      - name: 注入版本和更新源
+      - name: 注入版本
         if: steps.release.outputs.should_build == 'true'
         run: |
-          chmod +x scripts/*.sh packaging/vaultwarden/cmd/* packaging/vaultwarden/app/server/check-update packaging/vaultwarden/app/ui/update.cgi
-          ./scripts/prepare-release.sh "${{ steps.release.outputs.version }}" "${{ steps.release.outputs.revision }}" "${GITHUB_REPOSITORY}"
+          chmod +x scripts/*.sh packaging/vaultwarden/cmd/*
+          ./scripts/prepare-release.sh \
+            "${{ steps.release.outputs.version }}" \
+            "${{ steps.release.outputs.revision }}" \
+            "${{ steps.release.outputs.release_channel }}"
 
       - name: 构建并校验 FPK
         if: steps.release.outputs.should_build == 'true'
@@ -89,23 +104,13 @@ jobs:
       - name: 生成发布资产
         if: steps.release.outputs.should_build == 'true'
         env:
-          VERSION: ${{ steps.release.outputs.version }}
           PACKAGE_VERSION: ${{ steps.release.outputs.package_version }}
-          RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: |
           set -euo pipefail
           asset="dist/vaultwarden-${PACKAGE_VERSION}-fnos.fpk"
           mv dist/vaultwarden.fpk "${asset}"
           checksum="$(sha256sum "${asset}" | awk '{print $1}')"
-          fpk_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/$(basename "${asset}")"
-          {
-            echo "VERSION=${PACKAGE_VERSION}"
-            echo "UPSTREAM_VERSION=${VERSION}"
-            echo "FPK_URL=${fpk_url}"
-            echo "SHA256=${checksum}"
-            echo "PUBLISHED_AT=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-          } > dist/latest.env
-          sha256sum "${asset}" > dist/SHA256SUMS
+          printf '%s  %s\n' "${checksum}" "$(basename "${asset}")" > dist/SHA256SUMS
 
       - name: 保存构建产物
         if: steps.release.outputs.should_build == 'true'
@@ -114,7 +119,6 @@ jobs:
           name: vaultwarden-${{ steps.release.outputs.package_version }}-fnos
           path: |
             dist/*.fpk
-            dist/latest.env
             dist/SHA256SUMS
           if-no-files-found: error
           retention-days: 30
@@ -138,10 +142,10 @@ jobs:
             echo "- 安装前请校验 SHA256SUMS"
           } > "${notes_file}"
           if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
-            gh release upload "${RELEASE_TAG}" dist/*.fpk dist/latest.env dist/SHA256SUMS --clobber
+            gh release upload "${RELEASE_TAG}" dist/*.fpk dist/SHA256SUMS --clobber
             gh release edit "${RELEASE_TAG}" --latest --title "Vaultwarden ${PACKAGE_VERSION} for fnOS" --notes-file "${notes_file}"
           else
-            gh release create "${RELEASE_TAG}" dist/*.fpk dist/latest.env dist/SHA256SUMS \
+            gh release create "${RELEASE_TAG}" dist/*.fpk dist/SHA256SUMS \
               --latest --target "${GITHUB_SHA}" \
               --title "Vaultwarden ${PACKAGE_VERSION} for fnOS" --notes-file "${notes_file}"
           fi
