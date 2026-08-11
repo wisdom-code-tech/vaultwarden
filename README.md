@@ -36,6 +36,7 @@ make build
 2. 使用官方 `fnpack 1.2.1` 构建并校验 FPK。
 3. 创建 GitHub Release，上传 FPK 和 `SHA256SUMS`。
 4. 同版本需要发布新的打包实现时，递增根目录的 `PACKAGING_REVISION`。例如上游 `1.37.1`、修订号 `2` 会生成 FPK 版本 `1.37.1-rc2`，确保 fnOS 能区分同一上游版本的不同包。
+5. 手动触发时启用“正式版”选项，可生成不带 rc 后缀的 `1.37.1` FPK 和 Release；定时任务仍生成带打包修订号的候选版。
 
 也可以从 Actions 页面手动指定 Vaultwarden 版本。
 
