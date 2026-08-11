@@ -1,5 +1,5 @@
 appname        = vaultwarden
-version        = 1.37.1
+version        = 1.37.1-rc2
 display_name   = Vaultwarden
 desc           = 轻量、兼容 Bitwarden 客户端的自托管密码管理服务。原生运行，不依赖 Docker。
 source         = thirdparty

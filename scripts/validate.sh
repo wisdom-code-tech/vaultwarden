@@ -10,6 +10,7 @@ required_files=(
   app/ui/config app/ui/images/icon_64.png app/ui/images/icon_256.png
   app/server/vaultwarden app/server/runtime/etc/ssl/certs/ca-certificates.crt
   app/server/check-update app/ui/update.cgi
+  app/server/PACKAGE_VERSION
   cmd/main cmd/install_init cmd/install_callback
   cmd/uninstall_init cmd/uninstall_callback
   cmd/upgrade_init cmd/upgrade_callback

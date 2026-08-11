@@ -1,6 +1,7 @@
 #!/bin/bash
 
 UPSTREAM_FILE="${TRIM_APPDEST}/server/UPSTREAM"
+PACKAGE_VERSION_FILE="${TRIM_APPDEST}/server/PACKAGE_VERSION"
 REPOSITORY_FILE="${TRIM_APPDEST}/server/UPDATE_REPOSITORY"
 STATUS_FILE="${TRIM_PKGVAR}/update-status.env"
 LOG_FILE="${TRIM_PKGVAR}/vaultwarden.log"
@@ -29,7 +30,10 @@ read_value() {
 }
 
 check_once() {
-  current_version="$(read_value version "${UPSTREAM_FILE}")"
+  current_version="$(head -n 1 "${PACKAGE_VERSION_FILE}" 2>/dev/null | tr -d '[:space:]')"
+  if [ -z "${current_version}" ]; then
+    current_version="$(read_value version "${UPSTREAM_FILE}")"
+  fi
   update_repository="$(head -n 1 "${REPOSITORY_FILE}" 2>/dev/null | tr -d '[:space:]')"
   case "${update_repository}" in
     [A-Za-z0-9_.-]*/[A-Za-z0-9_.-]*) ;;
@@ -47,7 +51,7 @@ check_once() {
   fpk_url="$(read_value FPK_URL "${temp_file}")"
   fpk_sha256="$(read_value SHA256 "${temp_file}")"
   case "${latest_version}" in
-    ''|*[!0-9.]*)
+    ''|*[!0-9A-Za-z.-]*)
       log_update "检查失败：更新清单版本无效"
       rm -f "${temp_file}"
       return 0
