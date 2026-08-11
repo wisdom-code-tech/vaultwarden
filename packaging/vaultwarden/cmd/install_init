@@ -27,4 +27,12 @@ case "${wizard_enable_websocket:-true}" in
     exit 1
     ;;
 esac
+
+case "${wizard_existing_config_action:-overwrite}" in
+  overwrite|keep) ;;
+  *)
+    printf '%s\n' "已有配置的处理方式无效。" > "${TRIM_TEMP_LOGFILE}"
+    exit 1
+    ;;
+esac
 exit 0

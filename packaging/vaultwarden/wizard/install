@@ -31,6 +31,19 @@
           {"label": "开启（推荐）", "value": "true"},
           {"label": "关闭", "value": "false"}
         ]
+      },
+      {
+        "type": "radio",
+        "field": "wizard_existing_config_action",
+        "label": "发现已有 vaultwarden.env 时",
+        "initValue": "overwrite",
+        "options": [
+          {"label": "应用本次安装设置（推荐）", "value": "overwrite"},
+          {"label": "保留已有配置并跳过", "value": "keep"}
+        ],
+        "rules": [
+          {"required": true, "message": "请选择已有配置的处理方式"}
+        ]
       }
     ]
   },
@@ -39,7 +52,7 @@
     "items": [
       {
         "type": "tips",
-        "helpText": "Vaultwarden 管理后台已禁用。服务仅监听本机端口，可通过 fnOS 统一网关或 HTTPS 隧道访问。"
+        "helpText": "已有配置处理方式仅在检测到残留的 vaultwarden.env 时生效。Vaultwarden 管理后台已禁用；服务仅监听本机端口，可通过 fnOS 统一网关或 HTTPS 隧道访问。"
       }
     ]
   }
