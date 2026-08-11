@@ -171,7 +171,7 @@ func (s *supervisor) ensureDomain(domain string) error {
 	command.Env = environmentWithDomain(os.Environ(), domain)
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
-	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	command.SysProcAttr = vaultwardenSysProcAttr()
 	if err := command.Start(); err != nil {
 		return fmt.Errorf("start Vaultwarden: %w", err)
 	}
@@ -318,7 +318,7 @@ func removeStaleSocket(path string) error {
 	return os.Remove(path)
 }
 
-func run(cfg config) error {
+func run(ctx context.Context, cfg config) error {
 	if err := removeStaleSocket(cfg.socketPath); err != nil {
 		return err
 	}
@@ -358,25 +358,36 @@ func run(cfg config) error {
 		ReadHeaderTimeout: 15 * time.Second,
 		IdleTimeout:       90 * time.Second,
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-	go func() {
-		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			log.Printf("gateway shutdown: %v", err)
-		}
-		if err := supervisor.stop(); err != nil {
-			log.Printf("Vaultwarden shutdown: %v", err)
-		}
-	}()
-
 	log.Printf("fnOS gateway listening on unix://%s; DOMAIN will be derived automatically", cfg.socketPath)
-	if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return err
+	return serveUntilDone(ctx, server, listener, supervisor.stop)
+}
+
+func serveUntilDone(ctx context.Context, server *http.Server, listener net.Listener, stopVaultwarden func() error) error {
+	serveDone := make(chan error, 1)
+	go func() { serveDone <- server.Serve(listener) }()
+
+	select {
+	case err := <-serveDone:
+		stopErr := stopVaultwarden()
+		if errors.Is(err, http.ErrServerClosed) {
+			err = nil
+		}
+		return errors.Join(err, stopErr)
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		shutdownErr := server.Shutdown(shutdownCtx)
+		cancel()
+		if shutdownErr != nil {
+			log.Printf("gateway graceful shutdown: %v", shutdownErr)
+			shutdownErr = errors.Join(shutdownErr, server.Close())
+		}
+		stopErr := stopVaultwarden()
+		serveErr := <-serveDone
+		if errors.Is(serveErr, http.ErrServerClosed) {
+			serveErr = nil
+		}
+		return errors.Join(shutdownErr, stopErr, serveErr)
 	}
-	return nil
 }
 
 func main() {
@@ -384,7 +395,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if err := run(cfg); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	if err := run(ctx, cfg); err != nil {
 		log.Fatal(err)
 	}
 }

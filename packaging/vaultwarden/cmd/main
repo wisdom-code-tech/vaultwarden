@@ -24,6 +24,35 @@ is_running() {
   tr '\0' ' ' < "/proc/${gateway_pid}/cmdline" | grep -Fq "${GATEWAY_BINARY}"
 }
 
+vaultwarden_pids() {
+  app_binary_real="$(readlink -f "${APP_BINARY}" 2>/dev/null || printf '%s' "${APP_BINARY}")"
+  for proc_exe in /proc/[0-9]*/exe; do
+    process_binary="$(readlink "${proc_exe}" 2>/dev/null || true)"
+    process_binary="${process_binary% (deleted)}"
+    [ "${process_binary}" = "${app_binary_real}" ] || continue
+    proc_dir="${proc_exe%/exe}"
+    printf '%s\n' "${proc_dir##*/}"
+  done
+}
+
+stop_orphaned_vaultwarden() {
+  vaultwarden_processes="$(vaultwarden_pids)"
+  [ -n "${vaultwarden_processes}" ] || return 0
+  for vaultwarden_pid in ${vaultwarden_processes}; do
+    kill -TERM "${vaultwarden_pid}" 2>/dev/null || true
+  done
+  count=0
+  while [ "${count}" -lt 10 ]; do
+    vaultwarden_processes="$(vaultwarden_pids)"
+    [ -z "${vaultwarden_processes}" ] && return 0
+    sleep 1
+    count=$((count + 1))
+  done
+  for vaultwarden_pid in ${vaultwarden_processes}; do
+    kill -KILL "${vaultwarden_pid}" 2>/dev/null || true
+  done
+}
+
 load_environment() {
   if [ -r "${ENV_FILE}" ]; then
     set -a
@@ -55,6 +84,9 @@ start_app() {
     return 1
   fi
 
+  # rc6 及更早版本可能在代理退出后遗留 Vaultwarden 子进程。
+  stop_orphaned_vaultwarden
+
   load_environment
   mkdir -p "${TRIM_PKGVAR}/data" "${TRIM_PKGVAR}/tmp" "${HOME}"
   chmod 0700 "${TRIM_PKGVAR}/data"
@@ -80,7 +112,7 @@ stop_app() {
   if is_running; then
     kill -TERM "${gateway_pid}" 2>/dev/null || true
     count=0
-    while kill -0 "${gateway_pid}" 2>/dev/null && [ "${count}" -lt 20 ]; do
+    while kill -0 "${gateway_pid}" 2>/dev/null && [ "${count}" -lt 30 ]; do
       sleep 1
       count=$((count + 1))
     done
@@ -88,6 +120,7 @@ stop_app() {
       kill -KILL "${gateway_pid}" 2>/dev/null || true
     fi
   fi
+  stop_orphaned_vaultwarden
   rm -f "${GATEWAY_PID_FILE}"
   if [ -S "${GATEWAY_SOCKET}" ]; then
     rm -f "${GATEWAY_SOCKET}"
@@ -97,6 +130,7 @@ stop_app() {
 case "${1:-}" in
   start) start_app ;;
   stop) stop_app ;;
+  cleanup) stop_orphaned_vaultwarden ;;
   status)
     if is_running; then exit 0; else exit 3; fi
     ;;

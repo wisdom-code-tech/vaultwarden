@@ -1,5 +1,5 @@
 appname        = vaultwarden
-version        = 1.37.1-rc6
+version        = 1.37.1-rc7
 display_name   = Vaultwarden
 desc           = 轻量、兼容 Bitwarden 客户端的自托管密码管理服务。原生运行，不依赖 Docker。
 source         = thirdparty
@@ -15,4 +15,4 @@ service_port   = 8222
 disable_authorization_path = true
 desktop_uidir = ui
 desktop_applaunchname = vaultwarden.Application
-changelog = Vaultwarden 1.37.1；移除应用内自动更新检查，并修正发布资产校验。
+changelog = Vaultwarden 1.37.1；修复重启时子进程未退出导致端口被占用的问题。

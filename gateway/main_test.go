@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -10,7 +12,49 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 )
+
+func TestServeWaitsForVaultwardenShutdown(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &http.Server{Handler: http.NotFoundHandler()}
+	ctx, cancel := context.WithCancel(context.Background())
+	stopStarted := make(chan struct{})
+	releaseStop := make(chan struct{})
+	done := make(chan error, 1)
+
+	go func() {
+		done <- serveUntilDone(ctx, server, listener, func() error {
+			close(stopStarted)
+			<-releaseStop
+			return nil
+		})
+	}()
+	cancel()
+
+	select {
+	case <-stopStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Vaultwarden shutdown was not started")
+	}
+	select {
+	case err := <-done:
+		t.Fatalf("gateway returned before Vaultwarden stopped: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(releaseStop)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("gateway did not return after Vaultwarden stopped")
+	}
+}
 
 func TestReverseProxyPreservesGatewayPrefix(t *testing.T) {
 	received := make(chan *http.Request, 1)

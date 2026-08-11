@@ -15,4 +15,6 @@ rm -f \
   "${TRIM_PKGVAR}/gateway-domain" \
   "${TRIM_PKGVAR}/update-status.env" \
   "${TRIM_PKGVAR}/update-checker.pid"
+# rc6 的网关退出竞态可能留下仍占用内部端口的 Vaultwarden 进程。
+bash "${0%/*}/main" cleanup
 exit 0
