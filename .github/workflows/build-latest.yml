@@ -94,7 +94,8 @@ jobs:
           set -euo pipefail
           asset="dist/vaultwarden-${PACKAGE_VERSION}-fnos.fpk"
           mv dist/vaultwarden.fpk "${asset}"
-          sha256sum "${asset}" > dist/SHA256SUMS
+          checksum="$(sha256sum "${asset}" | awk '{print $1}')"
+          printf '%s  %s\n' "${checksum}" "$(basename "${asset}")" > dist/SHA256SUMS
 
       - name: 保存构建产物
         if: steps.release.outputs.should_build == 'true'
