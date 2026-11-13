@@ -7,15 +7,11 @@ from pathlib import Path
 import re
 import subprocess
 
+from release_version import package_version as mapped_version, stable_release, version_key
+
 
 def gh_json(*args):
     return json.loads(subprocess.check_output(["gh", *args], text=True))
-
-
-def version_key(version):
-    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
-        raise ValueError(f"无效的稳定版本号: {version}")
-    return tuple(map(int, version.split(".")))
 
 
 root = Path(__file__).resolve().parent.parent
@@ -36,21 +32,24 @@ pages = gh_json(
     f"repos/{os.environ['GITHUB_REPOSITORY']}/releases?per_page=100",
 )
 releases = [release for page in pages for release in page]
-manifest = (root / "packaging/vaultwarden/manifest").read_text()
-baseline = re.search(r"^version\s*=\s*([0-9]+\.[0-9]+\.[0-9]+)", manifest, re.M)[1]
+baseline = (root / "VAULTWARDEN_VERSION").read_text().strip()
 stable_versions = [baseline]
+stable_packages = []
 for release in releases:
-    tag_version = release["tag_name"].removeprefix("v")
     # 历史 RC 曾被误标为正式版，必须同时检查版本号和发布标记。
-    if (not release["draft"] and not release["prerelease"]
-            and re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", tag_version)):
-        stable_versions.append(tag_version)
+    if not release["draft"] and not release["prerelease"]:
+        identity = stable_release(release["tag_name"])
+        if identity:
+            upstream, package = identity
+            stable_versions.append(upstream)
+            stable_packages.append(version_key(package))
 baseline = max(stable_versions, key=version_key)
 
 scheduled = os.environ["GITHUB_EVENT_NAME"] == "schedule"
 stable = scheduled or os.environ.get("STABLE_RELEASE") == "true"
-package_version = version if stable else f"{version}-rc{revision}"
-tag = f"v{package_version}"
+channel = "stable" if stable else "rc"
+package_version = mapped_version(version, int(revision), channel)
+tag = f"v{version}-fnos{revision}" if stable else f"v{version}-rc{revision}"
 exists = any(release["tag_name"] == tag for release in releases)
 new_upstream = version_key(version) > version_key(baseline)
 should_build = not exists or os.environ.get("FORCE_BUILD") == "true"
@@ -65,7 +64,8 @@ outputs = {
     "tag": tag,
     "release_exists": exists,
     "should_build": should_build,
-    "make_latest": stable and version_key(version) >= version_key(baseline),
+    "make_latest": stable and version_key(version) >= version_key(baseline)
+    and (not stable_packages or version_key(package_version) >= max(stable_packages)),
 }
 with open(os.environ["GITHUB_OUTPUT"], "a") as output:
     for key, value in outputs.items():

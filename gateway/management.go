@@ -50,12 +50,13 @@ type githubRelease struct {
 }
 
 type packageRelease struct {
-	Version      string `json:"version"`
-	PublishedAt  string `json:"publishedAt"`
-	Size         int64  `json:"size"`
-	DownloadURL  string `json:"downloadUrl"`
-	ChecksumsURL string `json:"checksumsUrl"`
-	ReleaseURL   string `json:"releaseUrl"`
+	Version         string `json:"version"`
+	UpstreamVersion string `json:"upstreamVersion"`
+	PublishedAt     string `json:"publishedAt"`
+	Size            int64  `json:"size"`
+	DownloadURL     string `json:"downloadUrl"`
+	ChecksumsURL    string `json:"checksumsUrl"`
+	ReleaseURL      string `json:"releaseUrl"`
 }
 
 type updateResult struct {
@@ -72,9 +73,12 @@ func findPackageRelease(releases []githubRelease, current string) (updateResult,
 	result := updateResult{CurrentVersion: current}
 	var newest [3]uint64
 	for _, release := range releases {
-		version := strings.TrimPrefix(release.Tag, "v")
 		// 历史 RC 可能被误标为正式发布，不能只依赖 prerelease 字段。
-		if release.Draft || release.Prerelease || strings.Contains(version, "-") {
+		if release.Draft || release.Prerelease {
+			continue
+		}
+		upstream, version, err := formalReleaseVersion(release.Tag)
+		if err != nil {
 			continue
 		}
 		parsed, err := parsePackageVersion(version)
@@ -105,14 +109,14 @@ func findPackageRelease(releases []githubRelease, current string) (updateResult,
 		baseURL := "https://github.com/" + releaseRepository + "/releases/"
 		assetURL := baseURL + "download/" + release.Tag + "/"
 		result.Release = &packageRelease{
-			Version: version, PublishedAt: release.PublishedAt, Size: size,
+			Version: version, UpstreamVersion: upstream, PublishedAt: release.PublishedAt, Size: size,
 			DownloadURL: assetURL + filename, ChecksumsURL: assetURL + "SHA256SUMS",
 			ReleaseURL: baseURL + "tag/" + release.Tag,
 		}
 	}
 	if result.Release != nil {
 		comparison := slices.Compare(newest[:], installed[:])
-		result.Available = comparison > 0 || (comparison == 0 && strings.Contains(current, "-rc"))
+		result.Available = comparison > 0
 	}
 	return result, nil
 }
@@ -188,11 +192,15 @@ func (m *management) status(writer http.ResponseWriter, request *http.Request) {
 		}
 	}
 	writeManagementJSON(writer, http.StatusOK, struct {
-		State   string `json:"state"`
-		Address string `json:"address"`
-		Port    string `json:"port"`
-		Version string `json:"version"`
-	}{state, m.cfg.upstream.Hostname(), m.cfg.upstream.Port(), m.cfg.packageVersion})
+		State           string `json:"state"`
+		Address         string `json:"address"`
+		Port            string `json:"port"`
+		Version         string `json:"version"`
+		UpstreamVersion string `json:"upstreamVersion"`
+		Channel         string `json:"channel"`
+		Revision        int    `json:"revision"`
+	}{state, m.cfg.upstream.Hostname(), m.cfg.upstream.Port(), m.cfg.packageVersion,
+		m.cfg.metadata.UpstreamVersion, m.cfg.metadata.Channel, m.cfg.metadata.Revision})
 }
 
 func (m *management) updates(writer http.ResponseWriter, request *http.Request) {

@@ -53,7 +53,9 @@ jobs:
           REQUESTED_VERSION: ${{ inputs.version }}
           FORCE_BUILD: ${{ inputs.force }}
           STABLE_RELEASE: ${{ inputs.stable }}
-        run: python3 scripts/plan-release.py
+        run: |
+          python3 -m unittest discover -s scripts -p '*_test.py'
+          python3 scripts/plan-release.py
 
   build:
     needs: check
@@ -131,6 +133,9 @@ jobs:
             echo "- 架构：x86_64"
             echo "- 运行期不依赖 Docker"
             echo "- 安装前请校验 SHA256SUMS"
+            echo "- 上游程序版本：${VERSION}；fnOS 包版本：${PACKAGE_VERSION}。"
+            echo "- 使用三段数字 FPK 版本修复旧 RC 转正式版被判为相同或更高版本的问题。"
+            echo "- 已安装旧 RC 或旧裸版本的用户，请在飞牛应用中心手动安装本包覆盖升级，无需卸载；首次迁移后使用新的包版本检查更新。"
           } > "${notes_file}"
           release_flags=("--latest=${MAKE_LATEST}")
           if [ "${RELEASE_CHANNEL}" = "rc" ]; then
@@ -140,9 +145,9 @@ jobs:
           fi
           if [ "${RELEASE_EXISTS}" = "true" ]; then
             gh release upload "${RELEASE_TAG}" dist/*.fpk dist/SHA256SUMS --clobber
-            gh release edit "${RELEASE_TAG}" "${release_flags[@]}" --title "Vaultwarden ${PACKAGE_VERSION} for fnOS" --notes-file "${notes_file}"
+            gh release edit "${RELEASE_TAG}" "${release_flags[@]}" --title "Vaultwarden ${VERSION} for fnOS（FPK ${PACKAGE_VERSION}）" --notes-file "${notes_file}"
           else
             gh release create "${RELEASE_TAG}" dist/*.fpk dist/SHA256SUMS \
               "${release_flags[@]}" --target "${GITHUB_SHA}" \
-              --title "Vaultwarden ${PACKAGE_VERSION} for fnOS" --notes-file "${notes_file}"
+              --title "Vaultwarden ${VERSION} for fnOS（FPK ${PACKAGE_VERSION}）" --notes-file "${notes_file}"
           fi

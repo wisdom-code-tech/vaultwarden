@@ -4,7 +4,7 @@
 
 ## 设计
 
-- Vaultwarden 固定为 `1.37.1`，从官方 `vaultwarden/server:1.37.1-alpine` 的 `linux/amd64` 镜像提取。
+- Vaultwarden 默认版本由 `VAULTWARDEN_VERSION` 指定，当前为 `1.37.5`，从官方 `vaultwarden/server:1.37.5-alpine` 的 `linux/amd64` 镜像提取。
 - 使用官方静态 PIE x86_64 产物和 Web Vault，不依赖 fnOS 的 glibc 版本。
 - 使用静态 Go 代理监听 `${TRIM_APPDEST}/vaultwarden.sock`，通过 fnOS 统一网关转发到仅监听 `127.0.0.1:8222` 的 Vaultwarden。
 - 密码库数据、附件、密钥和 SQLite 数据库保存在 `$TRIM_PKGVAR/data`。
@@ -32,11 +32,30 @@ make build
 
 工作流 `.github/workflows/build-latest.yml` 每天北京时间 **09:17** 检查上游稳定 Release（GitHub 调度可能延迟）。检查和构建是独立任务，没有新版本时跳过构建。
 
-- **自动正式版**：上游稳定版高于当前正式版本时，自动构建不带 RC 的包。例如 `1.37.1 → 1.37.2`，生成 `vaultwarden-1.37.2-fnos.fpk`，发布 `v1.37.2` 并标为 GitHub **Latest**。
-- **手动测试版**：在 Actions 页面手动触发，生成 `上游版本-rc修订号`（修订号来自 `PACKAGING_REVISION`）。标记为 **Pre-release**，明确禁止成为 Latest。同一上游版本有新的测试包时递增修订号。
-- **手动正式版**：勾选“正式版”生成无 RC 的包。手动发布旧版本不会覆盖较新正式版的 Latest。
-- **重复构建**：已存在相同标签时跳过；仅手动勾选 `force` 才覆盖该版本资产。
-- **版本基线**：取源码 manifest 版本与已发布正式版版本号的最大值；忽略 RC，包括历史上被误标为正式版的 RC。不会因递增 `PACKAGING_REVISION` 自动构建 RC。
+- **自动正式版**：上游稳定版高于已发布正式包的上游版本时自动构建，发布 `v上游版本-fnos修订号` 并设为 GitHub **Latest**。
+- **手动测试版**：手动触发默认发布 `v上游版本-rc修订号`，标记为 **Pre-release**，不进入 Latest；FPK 内部同样使用三段数字版本。
+- **手动正式修订**：递增 `PACKAGING_REVISION` 后，勾选“正式版”可发布同一上游的新打包修订。旧版本或较低修订不会覆盖新正式包的 Latest。
+- **重复构建**：相同标签已存在时跳过；仅手动勾选 `force` 才覆盖该标签资产。修订号有效范围为 `1–499`，超过范围构建会明确失败。
+- **定时检查**：只比较独立的上游版本，忽略 RC 和打包修订变化，避免将 `1.37.5515` 误认为上游版本。
+
+### 版本规则与旧版迁移
+
+上游版本与 FPK 版本分开记录。`VAULTWARDEN_VERSION` 表示上游源码版本，`PACKAGING_REVISION` 表示本项目打包修订；构建时自动生成 `server/PACKAGE.json`，管理页面分别显示 Vaultwarden 和 FPK 版本。
+
+对上游 `主.次.补丁`，FPK 第三段按以下规则生成：
+
+- 测试版：`补丁 × 1000 + 修订号`。
+- 正式版：`补丁 × 1000 + 500 + 修订号`。
+
+| 上游版本 | 渠道与修订 | FPK 版本 | Release 标签 |
+| --- | --- | --- | --- |
+| 1.37.5 | RC 14 | 1.37.5014 | v1.37.5-rc14 |
+| 1.37.5 | 正式修订 15 | 1.37.5515 | v1.37.5-fnos15 |
+| 1.37.6 | RC 16 | 1.37.6016 | v1.37.6-rc16 |
+
+表中的 RC 14 为新规则示例；历史已发布的 RC 14 保持原样。每个上游版本的全部 RC 都低于其正式包，下一上游补丁的包版本高于上一补丁的全部修订。发布文件名使用实际 FPK 版本，例如 `vaultwarden-1.37.5515-fnos.fpk`。
+
+**已安装旧 `1.37.5-rc14` 或 `1.37.5` 的用户：**从新 Release 下载 FPK，在飞牛「应用中心 → 手动安装」直接选择新包覆盖升级，无需卸载。旧更新器不识别新标签，首次迁移需要手动安装；之后的更新器按实际 FPK 数字版本比较，不再把同一上游的旧裸版本当作可安装升级。历史 Release 和资产保留，不覆盖。
 
 构建使用官方 `linux/amd64` 静态产物和 `fnpack 1.2.1`，发布 FPK 与 `SHA256SUMS`。
 
@@ -46,7 +65,7 @@ make build
 
 fnOS 桌面只显示「Vaultwarden」iframe 入口，仅管理员可见，默认打开管理页，通过页面内的「打开密码库」进入 Vaultwarden。管理页路径为 `/app/vaultwarden/manage/`，统一网关注册前缀保持为 `/app/vaultwarden`，同时承载管理页和密码库，复用现有 Unix Socket，不额外开放服务端口。
 
-- 显示 Vaultwarden `/alive` 健康检查结果、实际监听端口及系统传入的当前 FPK 版本；可见时每 15 秒刷新状态。
+- 显示 Vaultwarden `/alive` 健康检查结果、实际监听端口、上游程序版本和实际 FPK 包版本；可见时每 15 秒刷新状态。
 - 点击「检查更新」查询本仓库 GitHub Releases，按版本号选择最新正式版。过滤草稿、预发布和 RC 标签，并要求 FPK 与 `SHA256SUMS` 均已上传；不会把上游尚未打包的版本显示为可更新。
 - 提供正式版 FPK、SHA256 校验文件和更新说明的 GitHub 下载链接；FPK 下载到当前浏览器所在设备，需要在飞牛应用中心手动安装。
 - 管理页面及接口均校验统一网关注入的 `X-Trim-Isadmin: true`，普通用户不能通过直接访问 URL 绕过权限限制。
@@ -82,6 +101,6 @@ Vaultwarden Web Vault 的 WebCrypto 要求安全上下文。生产使用时必�
 
 ## 更新上游版本
 
-更新 `scripts/fetch-upstream.sh` 中的版本和固定镜像清单摘要，同时更新 `packaging/vaultwarden/manifest` 的版本。不要使用浮动的 `latest` 标签。
+更新 `VAULTWARDEN_VERSION` 和 `scripts/fetch-upstream.sh` 的固定镜像摘要，再运行 `./scripts/prepare-release.sh <上游版本> <修订号> stable` 同步包版本及元数据。不要把映射后的 FPK 版本用于镜像标签。
 
 Vaultwarden 为非官方 Bitwarden 兼容服务端。本项目不隶属于 Bitwarden Inc.。上游许可证见 `packaging/vaultwarden/LICENSE`。

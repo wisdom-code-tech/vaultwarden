@@ -44,8 +44,9 @@ async function refreshStatus() {
     element("state-detail").textContent = detail;
     element("service-port").textContent = status.port;
     element("service-address").textContent = `${status.address} · 仅本机监听`;
-    element("package-version").textContent = status.version;
-    element("version-channel").textContent = status.version.includes("-rc") ? "RC 测试版本" : "正式版本";
+    element("package-version").textContent = status.upstreamVersion;
+    const channel = status.channel === "rc" ? "RC 测试版" : "正式版";
+    element("version-channel").textContent = `FPK ${status.version} · ${channel} · 修订 ${status.revision}`;
     element("status-error").hidden = true;
     element("status-time").textContent = `更新于 ${new Date().toLocaleTimeString("zh-CN", { hour12: false })} · 每 15 秒刷新`;
     if (previousState !== status.state) announce(`服务状态：${title}`);
@@ -93,7 +94,7 @@ async function checkUpdates() {
       title = result.currentVersion === release.version ? "当前已是最新正式版" : "当前版本高于最新正式版";
     }
     element("update-title").textContent = title;
-    element("update-description").textContent = `最新正式版 ${release.version} · 当前安装 ${result.currentVersion}`;
+    element("update-description").textContent = `Vaultwarden ${release.upstreamVersion} · 正式 FPK ${release.version} · 当前 FPK ${result.currentVersion}`;
     const published = new Date(release.publishedAt);
     const date = Number.isNaN(published.getTime()) ? "未提供发布时间" : `发布于 ${published.toLocaleDateString("zh-CN")}`;
     element("release-meta").textContent = `${date} · ${(release.size / 1024 / 1024).toFixed(1)} MB · x86_64`;

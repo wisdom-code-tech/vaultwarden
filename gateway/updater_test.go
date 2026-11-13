@@ -53,12 +53,13 @@ func testReleaseClient(fpk []byte, digest string, size int64) *http.Client {
 		var body []byte
 		switch {
 		case r.URL.Path == "/releases":
-			release := publishedPackage("1.37.2")
+			release := publishedPackage("1.37.2515")
+			release.Tag = "v1.37.2-fnos15"
 			release.Assets[0].Size = size
 			body, _ = json.Marshal([]githubRelease{release, publishedPackage("1.37.5-rc13")})
 		case strings.HasSuffix(r.URL.Path, "/SHA256SUMS"):
-			body = []byte(digest + "  vaultwarden-1.37.2-fnos.fpk\n")
-		case strings.HasSuffix(r.URL.Path, "/vaultwarden-1.37.2-fnos.fpk"):
+			body = []byte(digest + "  vaultwarden-1.37.2515-fnos.fpk\n")
+		case strings.HasSuffix(r.URL.Path, "/vaultwarden-1.37.2515-fnos.fpk"):
 			body = fpk
 		default:
 			return nil, fmt.Errorf("unexpected download: %s", r.URL)
@@ -73,12 +74,12 @@ func TestDownloadedUpdateMustMatchChecksumAndIdentity(t *testing.T) {
 		badHash, badSize               bool
 		wantError                      bool
 	}{
-		{"valid", "vaultwarden", "1.37.2", `[{"items":[{"type":"tips"}]}]`, false, false, false},
-		{"wrong-app", "other-app", "1.37.2", `[]`, false, false, true},
+		{"valid", "vaultwarden", "1.37.2515", `[{"items":[{"type":"tips"}]}]`, false, false, false},
+		{"wrong-app", "other-app", "1.37.2515", `[]`, false, false, true},
 		{"wrong-version", "vaultwarden", "1.37.3", `[]`, false, false, true},
-		{"interactive-wizard", "vaultwarden", "1.37.2", `[{"items":[{"type":"password"}]}]`, false, false, true},
-		{"bad-sha256", "vaultwarden", "1.37.2", `[]`, true, false, true},
-		{"truncated", "vaultwarden", "1.37.2", `[]`, false, true, true},
+		{"interactive-wizard", "vaultwarden", "1.37.2515", `[{"items":[{"type":"password"}]}]`, false, false, true},
+		{"bad-sha256", "vaultwarden", "1.37.2515", `[]`, true, false, true},
+		{"truncated", "vaultwarden", "1.37.2515", `[]`, false, true, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			fpk := testUpdateFPK(t, test.appname, test.version, test.wizard)
@@ -92,7 +93,7 @@ func TestDownloadedUpdateMustMatchChecksumAndIdentity(t *testing.T) {
 				size++
 			}
 			client := testReleaseClient(fpk, digest, size)
-			path, err := downloadUpdate(context.Background(), client, packageRelease{Version: "1.37.2", Size: size, DownloadURL: "https://github.com/test/vaultwarden-1.37.2-fnos.fpk", ChecksumsURL: "https://github.com/test/SHA256SUMS"}, t.TempDir())
+			path, err := downloadUpdate(context.Background(), client, packageRelease{Version: "1.37.2515", Size: size, DownloadURL: "https://github.com/test/vaultwarden-1.37.2515-fnos.fpk", ChecksumsURL: "https://github.com/test/SHA256SUMS"}, t.TempDir())
 			if (err != nil) != test.wantError {
 				t.Fatalf("path=%s error=%v", path, err)
 			}
@@ -129,13 +130,13 @@ func TestUpdaterUsesOriginalVolumeAndOnlyUpgradeRoutes(t *testing.T) {
 					}
 					data = map[string]string{"downloadTaskId": "stage-test"}
 				case "/rpc/v1/download/status":
-					data = map[string]any{"status": 2, "appName": "vaultwarden", "version": "1.37.2", "packageType": "fpk", "installed": true}
+					data = map[string]any{"status": 2, "appName": "vaultwarden", "version": "1.37.2515", "packageType": "fpk", "installed": true}
 				case "/rpc/v1/update/task":
 					params := body["systemParameters"].(map[string]any)
 					if params["installVolumeID"] != float64(2) || params["dataVolumeId"] != float64(2) || params["immediateStart"] != true {
 						t.Errorf("incorrect upgrade parameters: %+v", params)
 					}
-					if body["appName"] != "vaultwarden" || body["updateVersion"] != "1.37.2" {
+					if body["appName"] != "vaultwarden" || body["updateVersion"] != "1.37.2515" {
 						t.Errorf("incorrect package identity: %+v", body)
 					}
 					if loseTaskResponse {
@@ -144,7 +145,7 @@ func TestUpdaterUsesOriginalVolumeAndOnlyUpgradeRoutes(t *testing.T) {
 					}
 					data = map[string]string{"taskId": "upgrade-test"}
 				case "/rpc/v1/common/status":
-					if err := os.WriteFile(manifestPath, []byte("appname=vaultwarden\nversion=1.37.2\n"), 0600); err != nil {
+					if err := os.WriteFile(manifestPath, []byte("appname=vaultwarden\nversion=1.37.2515\n"), 0600); err != nil {
 						t.Error(err)
 					}
 					data = map[string]any{"status": 2}
@@ -154,7 +155,7 @@ func TestUpdaterUsesOriginalVolumeAndOnlyUpgradeRoutes(t *testing.T) {
 				json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": data})
 			}))
 			defer api.Close()
-			fpk := testUpdateFPK(t, "vaultwarden", "1.37.2", `[{"items":[{"type":"tips"}]}]`)
+			fpk := testUpdateFPK(t, "vaultwarden", "1.37.2515", `[{"items":[{"type":"tips"}]}]`)
 			sum := sha256.Sum256(fpk)
 			client := api.Client()
 			transport := client.Transport
@@ -207,7 +208,7 @@ func TestInstallerRejectsCrossOriginAndCallerSelectedPackages(t *testing.T) {
 	}{
 		{"", `{}`, 403}, {"https://evil.test", `{}`, 403},
 		{"https://nas.test", `{"url":"https://evil.test/a.fpk"}`, 400},
-		{"https://nas.test", `{} {"version":"1.37.2"}`, 400},
+		{"https://nas.test", `{} {"version":"1.37.2515"}`, 400},
 		{"https://nas.test", `{}`, 202},
 	} {
 		r := httptest.NewRequest(http.MethodPost, "https://nas.test/api/install", strings.NewReader(test.body))

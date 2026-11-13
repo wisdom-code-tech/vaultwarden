@@ -28,6 +28,7 @@ type config struct {
 	vaultwardenPath string
 	packageVersion  string
 	updaterService  bool
+	metadata        packageMetadata
 }
 
 func parseConfig() (config, error) {
@@ -57,6 +58,10 @@ func parseConfig() (config, error) {
 	if _, err := parsePackageVersion(packageVersion); err != nil {
 		return config{}, err
 	}
+	metadata, err := loadPackageMetadata(filepath.Join(filepath.Dir(vaultwardenPath), "PACKAGE.json"), packageVersion)
+	if err != nil {
+		return config{}, fmt.Errorf("read package metadata: %w", err)
+	}
 	upstream, err := url.Parse(upstreamRaw)
 	if err != nil || upstream.Scheme != "http" || upstream.Host == "" {
 		return config{}, fmt.Errorf("invalid HTTP upstream %q", upstreamRaw)
@@ -70,6 +75,7 @@ func parseConfig() (config, error) {
 		prefix:          prefix,
 		vaultwardenPath: vaultwardenPath,
 		packageVersion:  packageVersion,
+		metadata:        metadata,
 	}, nil
 }
 

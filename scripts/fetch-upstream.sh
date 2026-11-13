@@ -1,11 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-readonly APP_VERSION="${VAULTWARDEN_VERSION:-1.37.1}"
-readonly IMAGE_TAG="${APP_VERSION}-alpine"
-readonly EXPECTED_AMD64_MANIFEST="${VAULTWARDEN_AMD64_MANIFEST-sha256:8e40ec37553bdfdf608d3f66ae17474ff6e53db44f1d8a7fa0685862f3db52ed}"
-readonly REPOSITORY="vaultwarden/server"
 readonly PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly APP_VERSION="${VAULTWARDEN_VERSION:-$(cat "${PROJECT_ROOT}/VAULTWARDEN_VERSION")}"
+readonly IMAGE_TAG="${APP_VERSION}-alpine"
+readonly EXPECTED_AMD64_MANIFEST="${VAULTWARDEN_AMD64_MANIFEST-sha256:bda2ee084beddcb179ca433a2c24a548205fef9d3807319e3d27aed02eeed3ce}"
+readonly REPOSITORY="vaultwarden/server"
 readonly SERVER_DIR="${PROJECT_ROOT}/packaging/vaultwarden/app/server"
 readonly PACKAGE_DIR="${PROJECT_ROOT}/packaging/vaultwarden"
 

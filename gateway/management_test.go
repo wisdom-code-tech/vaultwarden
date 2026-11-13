@@ -39,7 +39,7 @@ func TestFindFormalPackageRelease(t *testing.T) {
 		current string
 		updated bool
 	}{
-		{"1.37.1", true}, {"1.37.10-rc12", true},
+		{"1.37.1", true}, {"1.37.10-rc12", false},
 		{"1.37.10", false}, {"1.38.0-rc1", false}, {"2.0.0", false},
 	} {
 		t.Run(test.current, func(t *testing.T) {
@@ -119,16 +119,16 @@ func TestManagementHealthAndActualConfiguration(t *testing.T) {
 			}))
 			defer upstream.Close()
 			upstreamURL, _ := url.Parse(upstream.URL)
-			manager := &management{cfg: config{upstream: upstreamURL, packageVersion: "1.37.2-rc12"}, client: upstream.Client()}
+			manager := &management{cfg: config{upstream: upstreamURL, packageVersion: "1.37.2515", metadata: packageMetadata{UpstreamVersion: "1.37.2", Channel: "stable", Revision: 15}}, client: upstream.Client()}
 			check := func(want string) {
 				t.Helper()
 				response := httptest.NewRecorder()
 				manager.status(response, httptest.NewRequest(http.MethodGet, "/api/status", nil))
-				var result map[string]string
+				var result map[string]any
 				if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
 					t.Fatal(err)
 				}
-				if result["state"] != want || result["port"] != upstreamURL.Port() || result["version"] != "1.37.2-rc12" {
+				if result["state"] != want || result["port"] != upstreamURL.Port() || result["version"] != "1.37.2515" || result["upstreamVersion"] != "1.37.2" || result["channel"] != "stable" {
 					t.Fatalf("incorrect live state: %+v", result)
 				}
 			}
