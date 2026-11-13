@@ -1,5 +1,15 @@
 {
   ".url": {
+    "vaultwarden.Management": {
+      "title": "Vaultwarden 管理",
+      "icon": "images/icon_{0}.png",
+      "type": "iframe",
+      "protocol": "",
+      "gatewaySocket": "vaultwarden.sock",
+      "gatewayPrefix": "/app/vaultwarden/manage",
+      "url": "/app/vaultwarden/manage/",
+      "allUsers": false
+    },
     "vaultwarden.Application": {
       "title": "Vaultwarden",
       "icon": "images/icon_{0}.png",

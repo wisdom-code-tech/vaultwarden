@@ -30,15 +30,26 @@ make build
 
 ## GitHub 自动发布
 
-工作流 `.github/workflows/build-latest.yml` 每小时检查一次 Vaultwarden 的最新稳定 Release；没有新版本时不会执行下载和构建：
+工作流 `.github/workflows/build-latest.yml` 每天北京时间 **09:17** 检查上游稳定 Release（GitHub 调度可能延迟）。检查和构建是独立任务，没有新版本时跳过构建。
 
-1. 若当前“上游版本 + `PACKAGING_REVISION`”尚未发布，则提取官方 `linux/amd64` 静态产物。
-2. 使用官方 `fnpack 1.2.1` 构建并校验 FPK。
-3. 创建 GitHub Release，上传 FPK 和 `SHA256SUMS`。
-4. 同版本需要发布新的打包实现时，递增根目录的 `PACKAGING_REVISION`。例如上游 `1.37.1`、修订号 `2` 会生成 FPK 版本 `1.37.1-rc2`，确保 fnOS 能区分同一上游版本的不同包。
-5. 手动触发时启用“正式版”选项，可生成不带 rc 后缀的 `1.37.1` FPK 和 Release；定时任务仍生成带打包修订号的候选版。
+- **自动正式版**：上游稳定版高于当前正式版本时，自动构建不带 RC 的包。例如 `1.37.1 → 1.37.2`，生成 `vaultwarden-1.37.2-fnos.fpk`，发布 `v1.37.2` 并标为 GitHub **Latest**。
+- **手动测试版**：在 Actions 页面手动触发，默认生成 `1.37.2-rc13`（修订号来自 `PACKAGING_REVISION`）。标记为 **Pre-release**，明确禁止成为 Latest。同一上游版本有新的测试包时递增修订号。
+- **手动正式版**：勾选“正式版”生成无 RC 的包。手动发布旧版本不会覆盖较新正式版的 Latest。
+- **重复构建**：已存在相同标签时跳过；仅手动勾选 `force` 才覆盖该版本资产。
+- **版本基线**：取源码 manifest 版本与已发布正式版版本号的最大值；忽略 RC，包括历史上被误标为正式版的 RC。不会因递增 `PACKAGING_REVISION` 自动构建 RC。
 
-也可以从 Actions 页面手动指定 Vaultwarden 版本。
+构建使用官方 `linux/amd64` 静态产物和 `fnpack 1.2.1`，发布 FPK 与 `SHA256SUMS`。
+
+目前不发送邮件通知。
+
+## 管理页面
+
+fnOS 桌面新增「Vaultwarden 管理」iframe 入口，仅管理员可见；原有密码库入口保持不变。管理页路径为 `/app/vaultwarden/manage/`，复用现有 Go 网关和 Unix Socket，不额外开放服务端口。
+
+- 显示 Vaultwarden `/alive` 健康检查结果、实际监听端口及系统传入的当前 FPK 版本；可见时每 15 秒刷新状态。
+- 点击「检查更新」查询本仓库 GitHub Releases，按版本号选择最新正式版。过滤草稿、预发布和 RC 标签，并要求 FPK 与 `SHA256SUMS` 均已上传；不会把上游尚未打包的版本显示为可更新。
+- 提供正式版 FPK、SHA256 校验文件和更新说明的 GitHub 下载链接；FPK 下载到当前浏览器所在设备，需要在飞牛应用中心手动安装。
+- 管理页面及接口均校验统一网关注入的 `X-Trim-Isadmin: true`，普通用户不能通过直接访问 URL 绕过权限限制。未接入自动安装或后台定时更新。
 
 ## 安装后
 

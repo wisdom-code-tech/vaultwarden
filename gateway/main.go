@@ -26,6 +26,7 @@ type config struct {
 	upstream        *url.URL
 	prefix          string
 	vaultwardenPath string
+	packageVersion  string
 }
 
 func parseConfig() (config, error) {
@@ -33,10 +34,12 @@ func parseConfig() (config, error) {
 	var upstreamRaw string
 	var prefix string
 	var vaultwardenPath string
+	var packageVersion string
 	flag.StringVar(&socketPath, "socket", "", "Unix socket path exposed to the fnOS gateway")
 	flag.StringVar(&upstreamRaw, "upstream", "http://127.0.0.1:8222", "Vaultwarden upstream URL")
 	flag.StringVar(&prefix, "prefix", "/app/vaultwarden", "gateway path prefix")
 	flag.StringVar(&vaultwardenPath, "vaultwarden", "", "Vaultwarden executable managed by this gateway")
+	flag.StringVar(&packageVersion, "package-version", "", "installed fnOS package version")
 	flag.Parse()
 
 	if socketPath == "" || !filepath.IsAbs(socketPath) {
@@ -44,6 +47,9 @@ func parseConfig() (config, error) {
 	}
 	if vaultwardenPath == "" || !filepath.IsAbs(vaultwardenPath) {
 		return config{}, errors.New("vaultwarden must be an absolute path")
+	}
+	if _, err := parsePackageVersion(packageVersion); err != nil {
+		return config{}, err
 	}
 	upstream, err := url.Parse(upstreamRaw)
 	if err != nil || upstream.Scheme != "http" || upstream.Host == "" {
@@ -57,6 +63,7 @@ func parseConfig() (config, error) {
 		upstream:        upstream,
 		prefix:          prefix,
 		vaultwardenPath: vaultwardenPath,
+		packageVersion:  packageVersion,
 	}, nil
 }
 
@@ -308,7 +315,7 @@ func run(ctx context.Context, cfg config) error {
 
 	proxy := newReverseProxy(cfg.upstream, cfg.prefix)
 	server := &http.Server{
-		Handler:           proxy,
+		Handler:           newManagementHandler(cfg, proxy),
 		ReadHeaderTimeout: 15 * time.Second,
 		IdleTimeout:       90 * time.Second,
 	}

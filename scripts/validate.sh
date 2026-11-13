@@ -8,6 +8,7 @@ required_files=(
   manifest config/privilege config/resource
   ICON.PNG ICON_256.PNG LICENSE
   app/ui/config app/ui/images/icon_64.png app/ui/images/icon_256.png
+  app/ui/manage/index.html app/ui/manage/style.css app/ui/manage/app.js
   app/server/vaultwarden app/server/runtime/etc/ssl/certs/ca-certificates.crt
   app/server/gateway-proxy
   cmd/main cmd/install_init cmd/install_callback

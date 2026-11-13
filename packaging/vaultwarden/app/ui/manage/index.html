@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Vaultwarden 管理</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳至主要内容</a>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 4.2 3.4 7 8 9 4.6-2 8-4.8 8-9V6l-8-3Z"/><path d="m8.5 12 2.3 2.3 4.7-4.7"/></svg></span>
+      <div><strong>Vaultwarden</strong><span class="brand-caption">飞牛 fnOS · 应用管理</span></div>
+    </div>
+    <a class="button vault-link" href="../" target="_blank" rel="noopener noreferrer">打开密码库 <span aria-hidden="true">↗</span></a>
+  </header>
+
+  <main id="main">
+    <section aria-labelledby="overview-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">本机服务</p><h1 id="overview-title">服务概览</h1></div>
+        <button id="refresh-status" class="text-button" type="button">刷新状态</button>
+      </div>
+      <p class="section-description">查看运行状态、监听端口与已安装版本。</p>
+      <div class="overview">
+        <div class="metric">
+          <h2>运行状态</h2>
+          <p class="metric-value state-value" id="service-state" data-state="loading"><span class="status-dot" aria-hidden="true"></span><span id="state-text">正在读取</span></p>
+          <p class="metric-caption" id="state-detail">正在检查服务是否响应</p>
+        </div>
+        <div class="metric">
+          <h2>服务端口</h2>
+          <p class="metric-value numeric" id="service-port">—</p>
+          <p class="metric-caption" id="service-address">仅本机监听</p>
+        </div>
+        <div class="metric">
+          <h2>当前版本</h2>
+          <p class="metric-value numeric" id="package-version">—</p>
+          <p class="metric-caption" id="version-channel">已安装的 FPK 版本</p>
+        </div>
+      </div>
+      <div class="status-footer"><span id="status-time">状态每 15 秒刷新</span><span>通过飞牛统一网关访问</span></div>
+      <p id="status-error" class="error-message" role="alert" hidden></p>
+    </section>
+
+    <section class="updates" aria-labelledby="updates-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">保持更新</p><h2 id="updates-title">版本更新</h2></div>
+        <button id="check-updates" class="button primary" type="button">检查更新</button>
+      </div>
+      <p class="section-description">从本项目的 GitHub Releases 获取正式版 FPK。</p>
+      <div class="update-content" id="update-content" aria-busy="false">
+        <span class="update-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4M5 15v5h14v-5"/></svg></span>
+        <div class="update-copy">
+          <p class="update-title" id="update-title">查看是否有可用的新版本</p>
+          <p class="muted" id="update-description">只检查正式版，不包含 RC 测试包。</p>
+          <p class="release-meta" id="release-meta" hidden></p>
+        </div>
+      </div>
+      <p id="update-error" class="error-message" role="alert" hidden></p>
+      <div id="release-actions" class="release-actions" hidden>
+        <a id="download-fpk" class="button primary" target="_blank" rel="noopener noreferrer">下载正式版 FPK</a>
+        <a id="download-checksums" class="text-link" target="_blank" rel="noopener noreferrer">SHA256 校验文件 <span aria-hidden="true">↗</span></a>
+        <a id="release-notes" class="text-link" target="_blank" rel="noopener noreferrer">更新说明 <span aria-hidden="true">↗</span></a>
+      </div>
+      <div class="install-note">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/></svg>
+        <p>FPK 将下载到当前设备。下载后请在飞牛「应用中心 → 手动安装」中选择该文件完成升级。</p>
+      </div>
+    </section>
+    <footer class="page-footer"><span>Vaultwarden for fnOS</span><span>管理页面 · 仅管理员可见</span></footer>
+    <p id="announcement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
+  </main>
+</body>
+</html>

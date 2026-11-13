@@ -2,7 +2,7 @@ name: 构建最新 Vaultwarden FPK
 
 on:
   schedule:
-    - cron: "17 * * * *"
+    - cron: "17 1 * * *"
   workflow_dispatch:
     inputs:
       version:
@@ -28,9 +28,20 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  check:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      revision: ${{ steps.release.outputs.revision }}
+      package_version: ${{ steps.release.outputs.package_version }}
+      release_channel: ${{ steps.release.outputs.release_channel }}
+      tag: ${{ steps.release.outputs.tag }}
+      release_exists: ${{ steps.release.outputs.release_exists }}
+      should_build: ${{ steps.release.outputs.should_build }}
+      make_latest: ${{ steps.release.outputs.make_latest }}
     steps:
       - name: 检出打包仓库
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -42,69 +53,45 @@ jobs:
           REQUESTED_VERSION: ${{ inputs.version }}
           FORCE_BUILD: ${{ inputs.force }}
           STABLE_RELEASE: ${{ inputs.stable }}
-        run: |
-          set -euo pipefail
-          version="${REQUESTED_VERSION#v}"
-          if [ -z "${version}" ]; then
-            version="$(gh api repos/dani-garcia/vaultwarden/releases/latest --jq '.tag_name | ltrimstr("v")')"
-          fi
-          revision="$(tr -cd '0-9' < PACKAGING_REVISION)"
-          test -n "${revision}"
-          release_channel=rc
-          package_version="${version}-rc${revision}"
-          if [ "${STABLE_RELEASE}" = "true" ]; then
-            release_channel=stable
-            package_version="${version}"
-          fi
-          tag="v${package_version}"
-          should_build=true
-          if gh release view "${tag}" >/dev/null 2>&1 && [ "${FORCE_BUILD}" != "true" ]; then
-            should_build=false
-          fi
-          {
-            echo "version=${version}"
-            echo "revision=${revision}"
-            echo "package_version=${package_version}"
-            echo "release_channel=${release_channel}"
-            echo "tag=${tag}"
-            echo "should_build=${should_build}"
-          } >> "${GITHUB_OUTPUT}"
-          echo "### Vaultwarden ${package_version}" >> "${GITHUB_STEP_SUMMARY}"
-          echo "构建：${should_build}" >> "${GITHUB_STEP_SUMMARY}"
+        run: python3 scripts/plan-release.py
+
+  build:
+    needs: check
+    if: needs.check.outputs.should_build == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: 检出打包仓库
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: 配置 Go
-        if: steps.release.outputs.should_build == 'true'
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: gateway/go.mod
           cache-dependency-path: gateway/go.mod
 
       - name: 安装构建依赖
-        if: steps.release.outputs.should_build == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends imagemagick jq file
 
       - name: 注入版本
-        if: steps.release.outputs.should_build == 'true'
         run: |
           chmod +x scripts/*.sh packaging/vaultwarden/cmd/*
           ./scripts/prepare-release.sh \
-            "${{ steps.release.outputs.version }}" \
-            "${{ steps.release.outputs.revision }}" \
-            "${{ steps.release.outputs.release_channel }}"
+            "${{ needs.check.outputs.version }}" \
+            "${{ needs.check.outputs.revision }}" \
+            "${{ needs.check.outputs.release_channel }}"
 
       - name: 构建并校验 FPK
-        if: steps.release.outputs.should_build == 'true'
         env:
-          VAULTWARDEN_VERSION: ${{ steps.release.outputs.version }}
+          VAULTWARDEN_VERSION: ${{ needs.check.outputs.version }}
           VAULTWARDEN_AMD64_MANIFEST: ""
         run: make build
 
       - name: 生成发布资产
-        if: steps.release.outputs.should_build == 'true'
         env:
-          PACKAGE_VERSION: ${{ steps.release.outputs.package_version }}
+          PACKAGE_VERSION: ${{ needs.check.outputs.package_version }}
         run: |
           set -euo pipefail
           asset="dist/vaultwarden-${PACKAGE_VERSION}-fnos.fpk"
@@ -113,10 +100,9 @@ jobs:
           printf '%s  %s\n' "${checksum}" "$(basename "${asset}")" > dist/SHA256SUMS
 
       - name: 保存构建产物
-        if: steps.release.outputs.should_build == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: vaultwarden-${{ steps.release.outputs.package_version }}-fnos
+          name: vaultwarden-${{ needs.check.outputs.package_version }}-fnos
           path: |
             dist/*.fpk
             dist/SHA256SUMS
@@ -124,12 +110,14 @@ jobs:
           retention-days: 30
 
       - name: 创建或更新 GitHub Release
-        if: steps.release.outputs.should_build == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.release.outputs.version }}
-          PACKAGE_VERSION: ${{ steps.release.outputs.package_version }}
-          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          VERSION: ${{ needs.check.outputs.version }}
+          PACKAGE_VERSION: ${{ needs.check.outputs.package_version }}
+          RELEASE_TAG: ${{ needs.check.outputs.tag }}
+          RELEASE_CHANNEL: ${{ needs.check.outputs.release_channel }}
+          RELEASE_EXISTS: ${{ needs.check.outputs.release_exists }}
+          MAKE_LATEST: ${{ needs.check.outputs.make_latest }}
         run: |
           set -euo pipefail
           notes_file="$(mktemp)"
@@ -141,11 +129,17 @@ jobs:
             echo "- 运行期不依赖 Docker"
             echo "- 安装前请校验 SHA256SUMS"
           } > "${notes_file}"
-          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+          release_flags=("--latest=${MAKE_LATEST}")
+          if [ "${RELEASE_CHANNEL}" = "rc" ]; then
+            release_flags+=(--prerelease)
+          else
+            release_flags+=(--prerelease=false)
+          fi
+          if [ "${RELEASE_EXISTS}" = "true" ]; then
             gh release upload "${RELEASE_TAG}" dist/*.fpk dist/SHA256SUMS --clobber
-            gh release edit "${RELEASE_TAG}" --latest --title "Vaultwarden ${PACKAGE_VERSION} for fnOS" --notes-file "${notes_file}"
+            gh release edit "${RELEASE_TAG}" "${release_flags[@]}" --title "Vaultwarden ${PACKAGE_VERSION} for fnOS" --notes-file "${notes_file}"
           else
             gh release create "${RELEASE_TAG}" dist/*.fpk dist/SHA256SUMS \
-              --latest --target "${GITHUB_SHA}" \
+              "${release_flags[@]}" --target "${GITHUB_SHA}" \
               --title "Vaultwarden ${PACKAGE_VERSION} for fnOS" --notes-file "${notes_file}"
           fi

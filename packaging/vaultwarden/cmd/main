@@ -95,7 +95,8 @@ start_app() {
     -socket "${GATEWAY_SOCKET}" \
     -upstream "http://127.0.0.1:${ROCKET_PORT}" \
     -prefix "${GATEWAY_PREFIX}" \
-    -vaultwarden "${APP_BINARY}" >> "${LOG_FILE}" 2>&1 &
+    -vaultwarden "${APP_BINARY}" \
+    -package-version "${TRIM_APPVER}" >> "${LOG_FILE}" 2>&1 &
   gateway_pid=$!
   printf '%s\n' "${gateway_pid}" > "${GATEWAY_PID_FILE}"
   sleep 1
