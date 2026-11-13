@@ -44,7 +44,7 @@ make build
 
 ## 管理页面
 
-fnOS 桌面新增「Vaultwarden 管理」iframe 入口，仅管理员可见；原有密码库入口保持不变。管理页路径为 `/app/vaultwarden/manage/`，复用现有 Go 网关和 Unix Socket，不额外开放服务端口。
+fnOS 桌面只显示「Vaultwarden」iframe 入口，仅管理员可见，默认打开管理页，通过页面内的「打开密码库」进入 Vaultwarden。管理页路径为 `/app/vaultwarden/manage/`，统一网关注册前缀保持为 `/app/vaultwarden`，同时承载管理页和密码库，复用现有 Unix Socket，不额外开放服务端口。
 
 - 显示 Vaultwarden `/alive` 健康检查结果、实际监听端口及系统传入的当前 FPK 版本；可见时每 15 秒刷新状态。
 - 点击「检查更新」查询本仓库 GitHub Releases，按版本号选择最新正式版。过滤草稿、预发布和 RC 标签，并要求 FPK 与 `SHA256SUMS` 均已上传；不会把上游尚未打包的版本显示为可更新。

@@ -14,5 +14,5 @@ checkport      = true
 service_port   = 8222
 disable_authorization_path = true
 desktop_uidir = ui
-desktop_applaunchname = vaultwarden.Application
+desktop_applaunchname = vaultwarden.Management
 changelog = Vaultwarden 1.37.1；fnOS 正式版。
