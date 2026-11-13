@@ -1,0 +1,40 @@
+#!/bin/bash
+
+report_error() {
+  printf '%s\n' "$1" > "${TRIM_TEMP_LOGFILE}"
+}
+
+run_as_package() {
+  if [ "$(id -u)" -eq 0 ]; then
+    # 错误日志由系统创建，交给降权后的回调写入。
+    if [ -f "${TRIM_TEMP_LOGFILE:-}" ]; then
+      chown -h "${TRIM_USERNAME}:${TRIM_GROUPNAME}" "${TRIM_TEMP_LOGFILE}" || return 1
+    fi
+    exec runuser -u "${TRIM_USERNAME}" -g "${TRIM_GROUPNAME}" --preserve-environment -- /bin/bash "$0" "$@"
+  fi
+}
+
+prepare_package_directories() {
+  command -v runuser >/dev/null
+  id "${TRIM_USERNAME}" >/dev/null
+
+  # 专用数据目录可能继承旧安装的属主；只处理本应用目录，不跟随内部软链接。
+  for directory in "${TRIM_PKGVAR}" "${TRIM_PKGETC}" "${TRIM_PKGHOME}"; do
+    mkdir -p "${directory}"
+    resolved_directory="$(readlink -f -- "${directory}")"
+    chown -hR "${TRIM_USERNAME}:${TRIM_GROUPNAME}" "${resolved_directory}"
+    chmod 0700 "${resolved_directory}"
+  done
+
+  # target 需要允许创建网关 Socket。粘滞位保护 root 持有的 server/ui，
+  # 应用用户可以管理自己的 Socket，但不能替换生命周期要执行的代码目录。
+  code_directory="$(readlink -f -- "${TRIM_APPDEST}")"
+  if [ -L "${code_directory}/server" ] || [ -L "${code_directory}/ui" ]; then
+    report_error "应用代码目录不能是软链接。"
+    return 1
+  fi
+  chown "root:${TRIM_GROUPNAME}" "${code_directory}"
+  chmod 1775 "${code_directory}"
+  chown -hR root:root "${code_directory}/server" "${code_directory}/ui"
+  chmod -R go-w "${code_directory}/server" "${code_directory}/ui"
+}

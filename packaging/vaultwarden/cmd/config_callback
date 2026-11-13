@@ -1,4 +1,9 @@
 #!/bin/bash
+set -eE
+
+. "${0%/*}/common"
+run_as_package "$@"
+trap 'report_error "保存运行设置失败，请查看应用中心日志。"' ERR
 
 ENV_FILE="${TRIM_PKGETC}/vaultwarden.env"
 

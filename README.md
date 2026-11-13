@@ -51,38 +51,28 @@ fnOS 桌面新增「Vaultwarden 管理」iframe 入口，仅管理员可见；�
 - 提供正式版 FPK、SHA256 校验文件和更新说明的 GitHub 下载链接；FPK 下载到当前浏览器所在设备，需要在飞牛应用中心手动安装。
 - 管理页面及接口均校验统一网关注入的 `X-Trim-Isadmin: true`，普通用户不能通过直接访问 URL 绕过权限限制。
 
-### 在 NAS 上下载并安装（开发中）
+### 在 NAS 上下载并安装
 
-`1.37.5-rc13` 仅包含管理页面及手动下载。当前开发分支为后续测试版增加「下载并安装正式版」；尚未经过真实 fnOS 验证，不会自动启用 root 服务，也不启用无人值守更新。
+从 `1.37.5-rc14` 起，安装和升级 FPK 时自动部署系统升级助手，无需 SSH 安装。生命周期以 root 执行部署工作；网关、密码库和配置回调在读取 `vaultwarden.env` 之前切换至 `vaultwarden` 专用用户，网关也会拒绝以 root 启动。
 
-应用和密码库继续以 `vaultwarden` 用户运行。管理员需要在安装包含此功能的 FPK 后，通过 SSH 单独启用升级辅助服务：
+升级助手位于 root 管理的 `/usr/local/libexec/vaultwarden-updater`，由独立 systemd 服务运行。应用代码目录由 root 持有，专用用户保留数据目录及网关 Socket 所需的写入权限。管理页面仅通过受文件权限保护的 Unix Socket 请求升级，不能传入安装包 URL、路径、版本或命令。
 
-```bash
-sudo bash /var/apps/vaultwarden/target/server/install-updater.sh
-```
+点击「下载并安装正式版」后，助手重新选择最新正式 FPK，完成 SHA256、文件大小、应用身份、版本、架构和升级向导检查，再调用系统应用中心的原位升级接口，沿用现有存储卷。只包含说明文字的升级向导可自动处理；需要填写表单的版本要求手动安装。未启用无人值守定时安装。
 
-脚本把辅助程序安装到 root 管理的 `/usr/local/libexec/vaultwarden-updater`，由独立 systemd 服务运行。管理页面仅通过受文件权限保护的 Unix Socket 请求升级，不能传入安装包 URL、路径、版本或命令。
+升级过程独立于应用进程，网页断开不会重发安装任务。更新助手本身时，生命周期原子替换程序并请求平滑重载；正在执行的升级完成后才重启助手，避免中断任务或与升级回调相互等待。卸载 FPK 时自动停止并移除助手，密码库数据按卸载向导选择保留或删除。
 
-辅助服务每次重新选择最新正式 FPK，依次完成 SHA256、文件大小、应用身份、版本、架构和升级向导检查，再调用系统应用中心的原位升级接口，沿用现有存储卷。只包含说明文字的升级向导可以自动处理；需要填写表单的版本要求手动安装。升级过程独立于应用进程，网页断开不会重发安装任务。
+系统接口协议参考 [fnos-store 的实测实现](https://github.com/conversun/fnos-store/blob/main/internal/platform/rpc.go)，不属于飞牛公开 Open API。当前已覆盖模拟系统升级流程和 Linux 生命周期降权测试，仍需在目标 NAS 验证接口、权限、数据保留、停止重启和最终版本。接口不可用时保留手动下载，不调用卸载重装命令。
 
-系统接口的协议参考 [fnos-store 的实测实现](https://github.com/conversun/fnos-store/blob/main/internal/platform/rpc.go)，不属于飞牛公开 Open API。服务启用后仍需在目标 NAS 验证接口、权限、数据保留、停止重启和最终版本。接口不可用时保留手动下载，不调用卸载重装命令。
-
-如果辅助服务在提交系统任务时丢失响应或重启，页面会显示结果待核实并阻止重复安装。管理员需先在系统应用中心确认任务结果；诊断日志：
+如果提交系统任务时丢失响应或助手异常重启，页面会显示结果待核实并阻止重复安装。管理员需先在系统应用中心确认任务结果。诊断日志：
 
 ```bash
 sudo systemctl status vaultwarden-updater.service
 sudo journalctl -u vaultwarden-updater.service -n 100 --no-pager
 ```
 
-辅助服务独立安装，卸载 FPK 不会删除它。停止并取消开机启动：
-
-```bash
-sudo systemctl disable --now vaultwarden-updater.service
-```
-
 ## 安装后
 
-安装向导会要求管理员令牌和注册策略。启动日志位于：
+安装向导提供端口和注册策略设置。启动日志位于：
 
 ```text
 /var/apps/vaultwarden/var/vaultwarden.log

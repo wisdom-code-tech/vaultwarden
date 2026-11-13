@@ -40,7 +40,7 @@ func installerProxy(client *http.Client, route string) http.HandlerFunc {
 		}
 		response, err := client.Do(forwarded)
 		if err != nil {
-			writeManagementJSON(writer, http.StatusServiceUnavailable, map[string]string{"error": "升级辅助服务未启用或暂不可用，请管理员先在 NAS 上安装辅助服务；仍可手动下载 FPK"})
+			writeManagementJSON(writer, http.StatusServiceUnavailable, map[string]string{"error": "升级辅助服务暂不可用，请重新安装或升级应用以修复；仍可手动下载 FPK"})
 			return
 		}
 		defer response.Body.Close()

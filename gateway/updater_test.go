@@ -232,3 +232,29 @@ func TestAppCenterMissingCodeIsNotSuccess(t *testing.T) {
 		t.Fatal("missing response code was accepted")
 	}
 }
+
+func TestUpdaterReloadWaitsForActiveTask(t *testing.T) {
+	u := &updater{state: installState{Phase: "installing"}, active: true, reloadReady: make(chan struct{}, 1)}
+	u.requestReload()
+	select {
+	case <-u.reloadReady:
+		t.Fatal("reload interrupted an active system upgrade")
+	default:
+	}
+	if err := u.start(); err == nil {
+		t.Fatal("new work accepted during pending reload")
+	}
+	u.finishRun()
+	select {
+	case <-u.reloadReady:
+	default:
+		t.Fatal("completed task did not unblock reload")
+	}
+	idle := &updater{state: installState{Phase: "idle"}, reloadReady: make(chan struct{}, 1)}
+	idle.requestReload()
+	select {
+	case <-idle.reloadReady:
+	default:
+		t.Fatal("idle helper did not reload immediately")
+	}
+}

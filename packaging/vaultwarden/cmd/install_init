@@ -1,5 +1,10 @@
 #!/bin/bash
 
+if [ "$(id -u)" -ne 0 ]; then
+  printf '%s\n' "安装需要由飞牛以 root 执行生命周期，应用服务将以专用用户运行。" > "${TRIM_TEMP_LOGFILE}"
+  exit 1
+fi
+
 port="${wizard_port:-8222}"
 case "${port}" in
   ''|*[!0-9]*)

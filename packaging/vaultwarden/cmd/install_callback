@@ -1,4 +1,17 @@
 #!/bin/bash
+set -eE
+
+. "${0%/*}/common"
+trap 'report_error "安装初始化失败，请查看应用中心日志。"' ERR
+if [ "$(id -u)" -eq 0 ]; then
+  prepare_package_directories
+  bash "${TRIM_APPDEST}/server/install-updater.sh"
+  run_as_package --package-callback
+fi
+if [ "${1:-}" != "--package-callback" ]; then
+  report_error "安装回调未以 root 完成升级助手部署。"
+  exit 1
+fi
 
 ENV_FILE="${TRIM_PKGETC}/vaultwarden.env"
 

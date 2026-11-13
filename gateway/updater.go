@@ -14,9 +14,11 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -269,6 +271,9 @@ type updater struct {
 	center       appCenter
 	client       *http.Client
 	releasesURL  string
+	active       bool
+	reloading    bool
+	reloadReady  chan struct{}
 }
 
 func (u *updater) snapshot() installState {
@@ -301,17 +306,19 @@ func installBusy(phase string) bool {
 
 func (u *updater) start() error {
 	u.mu.Lock()
-	if installBusy(u.state.Phase) {
+	if u.active || u.reloading || installBusy(u.state.Phase) {
 		u.mu.Unlock()
 		return errors.New("已有升级任务进行中或结果待确认，请勿重复提交")
 	}
 	u.state = installState{Phase: "checking", Message: "正在检查正式版本与升级权限"}
+	u.active = true
 	u.mu.Unlock()
 	go u.run()
 	return nil
 }
 
 func (u *updater) run() {
+	defer u.finishRun()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
 	if err := u.perform(ctx); err != nil {
@@ -325,6 +332,32 @@ func (u *updater) run() {
 		if saveErr := u.record(state); saveErr != nil {
 			// 保留内存中的忙碌状态，禁止在持久化失败后重复提交升级。
 			fmt.Fprintf(os.Stderr, "保存升级状态失败: %v; 原错误: %v\n", saveErr, err)
+		}
+	}
+}
+
+// 生命周期的 reload 不能等待系统升级结束，否则升级回调和助手相互等待。
+// 先记录重载请求，最后一个任务退出后再通知服务主循环重启。
+func (u *updater) requestReload() {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.reloading = true
+	if !u.active {
+		select {
+		case u.reloadReady <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func (u *updater) finishRun() {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.active = false
+	if u.reloading {
+		select {
+		case u.reloadReady <- struct{}{}:
+		default:
 		}
 	}
 }
@@ -507,7 +540,7 @@ func (u *updater) handler() http.Handler {
 
 func runUpdaterService(ctx context.Context) error {
 	if os.Geteuid() != 0 {
-		return errors.New("升级辅助服务需要管理员单独安装并以 root 运行")
+		return errors.New("升级辅助服务需要由应用生命周期部署并以 root 运行")
 	}
 	if err := os.MkdirAll(updaterStateDir, 0700); err != nil {
 		return err
@@ -516,6 +549,7 @@ func runUpdaterService(ctx context.Context) error {
 		state: installState{Phase: "idle"}, directory: updaterStateDir, manifestPath: installedManifest,
 		center: appCenter{client: unixHTTPClient(appCenterSocket, 30*time.Second)},
 		client: &http.Client{Timeout: 15 * time.Minute}, releasesURL: "https://api.github.com/repos/" + releaseRepository + "/releases",
+		reloadReady: make(chan struct{}, 1),
 	}
 	data, err := os.ReadFile(filepath.Join(updaterStateDir, "status.json"))
 	if err == nil {
@@ -549,5 +583,23 @@ func runUpdaterService(ctx context.Context) error {
 		return err
 	}
 	server := &http.Server{Handler: u.handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
-	return serveUntilDone(ctx, server, listener, func() error { return nil })
+	reloadSignal := make(chan os.Signal, 1)
+	signal.Notify(reloadSignal, syscall.SIGUSR1)
+	defer signal.Stop(reloadSignal)
+	serviceCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go func() {
+		for {
+			select {
+			case <-serviceCtx.Done():
+				return
+			case <-reloadSignal:
+				u.requestReload()
+			case <-u.reloadReady:
+				cancel()
+				return
+			}
+		}
+	}()
+	return serveUntilDone(serviceCtx, server, listener, func() error { return nil })
 }

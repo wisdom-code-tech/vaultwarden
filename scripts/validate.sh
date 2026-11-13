@@ -12,7 +12,7 @@ required_files=(
   app/server/vaultwarden app/server/runtime/etc/ssl/certs/ca-certificates.crt
   app/server/gateway-proxy
   app/server/install-updater.sh app/server/vaultwarden-updater.service
-  cmd/main cmd/install_init cmd/install_callback
+  cmd/common cmd/main cmd/install_init cmd/install_callback
   cmd/uninstall_init cmd/uninstall_callback
   cmd/upgrade_init cmd/upgrade_callback
   cmd/config_init cmd/config_callback
@@ -27,6 +27,7 @@ for relative_path in "${required_files[@]}"; do
 done
 
 bash -n "${PACKAGE_DIR}/app/server/install-updater.sh"
+jq -e '.defaults["run-as"] == "root" and .username == "vaultwarden" and .groupname == "vaultwarden"' "${PACKAGE_DIR}/config/privilege" >/dev/null
 
 for json_file in config/privilege config/resource app/ui/config wizard/install wizard/config wizard/uninstall wizard/upgrade; do
   jq -e . "${PACKAGE_DIR}/${json_file}" >/dev/null

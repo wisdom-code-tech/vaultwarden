@@ -1,5 +1,8 @@
 #!/bin/bash
 
+. "${0%/*}/common"
+run_as_package "$@" || exit 1
+
 APP_BINARY="${TRIM_APPDEST}/server/vaultwarden"
 GATEWAY_BINARY="${TRIM_APPDEST}/server/gateway-proxy"
 GATEWAY_SOCKET="${TRIM_APPDEST}/vaultwarden.sock"

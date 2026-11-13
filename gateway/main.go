@@ -42,7 +42,7 @@ func parseConfig() (config, error) {
 	flag.StringVar(&prefix, "prefix", "/app/vaultwarden", "gateway path prefix")
 	flag.StringVar(&vaultwardenPath, "vaultwarden", "", "Vaultwarden executable managed by this gateway")
 	flag.StringVar(&packageVersion, "package-version", "", "installed fnOS package version")
-	flag.BoolVar(&updaterService, "updater-service", false, "run the separately installed privileged update service")
+	flag.BoolVar(&updaterService, "updater-service", false, "run the lifecycle-managed privileged update service")
 	flag.Parse()
 	if updaterService {
 		return config{updaterService: true}, nil
@@ -369,6 +369,9 @@ func main() {
 			log.Fatal(err)
 		}
 		return
+	}
+	if os.Geteuid() == 0 {
+		log.Fatal("the gateway and Vaultwarden must run as the package user, not root")
 	}
 	if err := run(ctx, cfg); err != nil {
 		log.Fatal(err)

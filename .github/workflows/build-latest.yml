@@ -89,6 +89,9 @@ jobs:
           VAULTWARDEN_AMD64_MANIFEST: ""
         run: make build
 
+      - name: 验证生命周期降权与升级助手部署
+        run: sudo bash scripts/test-lifecycle.sh
+
       - name: 生成发布资产
         env:
           PACKAGE_VERSION: ${{ needs.check.outputs.package_version }}
