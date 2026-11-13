@@ -212,6 +212,7 @@ func newManagementHandler(cfg config, proxy http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/status", m.status)
 	mux.HandleFunc("GET /api/updates", m.updates)
+	registerInstallerRoutes(mux)
 	uiPath := filepath.Join(filepath.Dir(filepath.Dir(cfg.vaultwardenPath)), "ui", "manage")
 	mux.Handle("GET /", http.FileServer(http.Dir(uiPath)))
 	managementPrefix := cfg.prefix + "/manage"

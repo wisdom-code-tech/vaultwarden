@@ -70,6 +70,14 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/></svg>
         <p>FPK 将下载到当前设备。下载后请在飞牛「应用中心 → 手动安装」中选择该文件完成升级。</p>
       </div>
+      <div class="installer-panel" aria-labelledby="installer-title">
+        <div class="section-heading">
+          <h3 id="installer-title">在 NAS 上安装更新</h3>
+          <button id="install-update" class="button primary" type="button" hidden>下载并安装正式版</button>
+        </div>
+        <p id="installer-message" class="muted" role="status" aria-live="polite">正在检查升级辅助服务…</p>
+        <button id="refresh-installer" class="text-button" type="button">重新检查安装权限</button>
+      </div>
     </section>
     <footer class="page-footer"><span>Vaultwarden for fnOS</span><span>管理页面 · 仅管理员可见</span></footer>
     <p id="announcement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>

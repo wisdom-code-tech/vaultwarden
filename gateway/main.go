@@ -27,6 +27,7 @@ type config struct {
 	prefix          string
 	vaultwardenPath string
 	packageVersion  string
+	updaterService  bool
 }
 
 func parseConfig() (config, error) {
@@ -35,12 +36,17 @@ func parseConfig() (config, error) {
 	var prefix string
 	var vaultwardenPath string
 	var packageVersion string
+	var updaterService bool
 	flag.StringVar(&socketPath, "socket", "", "Unix socket path exposed to the fnOS gateway")
 	flag.StringVar(&upstreamRaw, "upstream", "http://127.0.0.1:8222", "Vaultwarden upstream URL")
 	flag.StringVar(&prefix, "prefix", "/app/vaultwarden", "gateway path prefix")
 	flag.StringVar(&vaultwardenPath, "vaultwarden", "", "Vaultwarden executable managed by this gateway")
 	flag.StringVar(&packageVersion, "package-version", "", "installed fnOS package version")
+	flag.BoolVar(&updaterService, "updater-service", false, "run the separately installed privileged update service")
 	flag.Parse()
+	if updaterService {
+		return config{updaterService: true}, nil
+	}
 
 	if socketPath == "" || !filepath.IsAbs(socketPath) {
 		return config{}, errors.New("socket must be an absolute path")
@@ -358,6 +364,12 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	if cfg.updaterService {
+		if err := runUpdaterService(ctx); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	if err := run(ctx, cfg); err != nil {
 		log.Fatal(err)
 	}

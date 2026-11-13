@@ -76,7 +76,7 @@ func TestManagementAuthorizationAndProxy(t *testing.T) {
 	handler := newManagementHandler(config{
 		prefix: "/app/vaultwarden", vaultwardenPath: binaryPath, packageVersion: "1.37.1",
 	}, proxy)
-	for _, path := range []string{"/app/vaultwarden/manage", "/app/vaultwarden/manage/", "/app/vaultwarden/manage/app.js", "/app/vaultwarden/manage/api/status", "/app/vaultwarden/manage/api/updates"} {
+	for _, path := range []string{"/app/vaultwarden/manage", "/app/vaultwarden/manage/", "/app/vaultwarden/manage/app.js", "/app/vaultwarden/manage/api/status", "/app/vaultwarden/manage/api/updates", "/app/vaultwarden/manage/api/installer", "/app/vaultwarden/manage/api/install-status", "/app/vaultwarden/manage/api/install"} {
 		for _, admin := range []string{"", "false", "TRUE"} {
 			request := httptest.NewRequest(http.MethodGet, path, nil)
 			request.Header.Set("X-Trim-Isadmin", admin)

@@ -5,12 +5,14 @@ const statusButton = element("refresh-status");
 const checkButton = element("check-updates");
 let statusTimer;
 let previousState;
+let updateAvailable = false;
+let checkingUpdates = false;
+let installerAvailable = false;
+let installRunning = false;
+let installTimer;
 
-async function getJSON(path) {
-  const response = await fetch(path, { cache: "no-store", credentials: "same-origin" });
-  if (response.status === 403) {
-    throw new Error("仅 fnOS 管理员可访问，请使用管理员账号重新打开页面。");
-  }
+async function getJSON(path, options = {}) {
+  const response = await fetch(path, { ...options, cache: "no-store", credentials: "same-origin" });
   const contentType = response.headers.get("content-type") || "";
   if (!contentType.includes("application/json")) {
     throw new Error("无法读取管理接口，请检查飞牛登录状态后重新打开页面。");
@@ -65,7 +67,9 @@ async function refreshStatus() {
 }
 
 async function checkUpdates() {
-  checkButton.disabled = true;
+  checkingUpdates = true;
+  updateAvailable = false;
+  syncInstallButton();
   checkButton.textContent = "正在检查…";
   element("update-content").setAttribute("aria-busy", "true");
   element("update-title").textContent = "正在检查正式版本…";
@@ -75,6 +79,8 @@ async function checkUpdates() {
   element("release-meta").hidden = true;
   try {
     const result = await getJSON("api/updates");
+    updateAvailable = result.available;
+    syncInstallButton();
     const release = result.release;
     if (!release) {
       element("update-title").textContent = "暂无可下载的正式版";
@@ -103,8 +109,11 @@ async function checkUpdates() {
     element("update-description").textContent = "当前安装的服务不受影响，可稍后重试。";
     element("update-error").textContent = error.message;
     element("update-error").hidden = false;
+    updateAvailable = false;
+    syncInstallButton();
   } finally {
-    checkButton.disabled = false;
+    checkingUpdates = false;
+    syncInstallButton();
     checkButton.textContent = "检查更新";
     element("update-content").setAttribute("aria-busy", "false");
   }
@@ -112,7 +121,76 @@ async function checkUpdates() {
 
 statusButton.addEventListener("click", refreshStatus);
 checkButton.addEventListener("click", checkUpdates);
+
+function syncInstallButton() {
+  element("install-update").hidden = !installerAvailable || !updateAvailable;
+  element("install-update").disabled = installRunning || checkingUpdates;
+  checkButton.disabled = installRunning || checkingUpdates;
+}
+
+async function refreshInstaller() {
+  element("refresh-installer").disabled = true;
+  try {
+    const result = await getJSON("api/installer");
+    installerAvailable = result.available;
+    if (result.available) {
+      element("installer-message").textContent = "升级辅助服务已就绪。检查到新正式版后，可下载到 NAS 并完成安装。";
+      await pollInstallation();
+    } else {
+      element("installer-message").textContent = `系统升级接口暂不可用：${result.reason}`;
+    }
+  } catch (error) {
+    installerAvailable = false;
+    element("installer-message").textContent = error.message;
+  } finally {
+    element("refresh-installer").disabled = false;
+    syncInstallButton();
+  }
+}
+
+async function pollInstallation() {
+  clearTimeout(installTimer);
+  try {
+    const state = await getJSON("api/install-status");
+    installRunning = !["idle", "complete", "failed"].includes(state.phase);
+    if (state.phase !== "idle") element("installer-message").textContent = state.message;
+    if (state.phase === "complete") {
+      updateAvailable = false;
+      refreshStatus();
+    }
+    syncInstallButton();
+    if (installRunning && state.phase !== "unknown") {
+      installTimer = setTimeout(pollInstallation, 2000);
+    }
+  } catch (error) {
+    element("installer-message").textContent = installRunning
+      ? "升级期间连接暂时中断，正在等待管理页面恢复；请勿重复提交安装。"
+      : error.message;
+    if (installRunning) installTimer = setTimeout(pollInstallation, 5000);
+  }
+}
+
+async function installUpdate() {
+  if (!window.confirm("确认下载并安装最新正式版，并同意升级包所附的应用协议？服务会短暂重启，现有数据与配置由飞牛应用中心保留。")) return;
+  installRunning = true;
+  syncInstallButton();
+  element("installer-message").textContent = "正在提交安装请求…";
+  try {
+    await getJSON("api/install", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+    });
+    await pollInstallation();
+  } catch (error) {
+    element("installer-message").textContent = `${error.message}。正在核对任务状态，请勿重复点击安装。`;
+    // POST 响应丢失不代表任务未创建，先查询状态，不自动重发安装。
+    await pollInstallation();
+  }
+}
+
+element("install-update").addEventListener("click", installUpdate);
+element("refresh-installer").addEventListener("click", refreshInstaller);
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && !statusButton.disabled) refreshStatus();
 });
 refreshStatus();
+refreshInstaller();

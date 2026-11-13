@@ -1,0 +1,27 @@
+[Unit]
+Description=Vaultwarden fnOS upgrade helper
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=vaultwarden
+ExecStart=/usr/local/libexec/vaultwarden-updater -updater-service
+RuntimeDirectory=vaultwarden-updater
+RuntimeDirectoryMode=0750
+StateDirectory=vaultwarden-updater
+StateDirectoryMode=0700
+UMask=0077
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/run/vaultwarden-updater /var/lib/vaultwarden-updater
+
+[Install]
+WantedBy=multi-user.target
